@@ -1,0 +1,14 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*~
+.vscode/
+.idea/
+
+# Dependencias (el sitio es estático; no debería haber, pero por las dudas)
+node_modules/
+
+# Logs / temporales
+*.log
