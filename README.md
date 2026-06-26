@@ -55,9 +55,9 @@ Después del deploy, confirmá que `https://formen.ar` carga con candado y sin e
 
 Buscá los comentarios `TODO` en el código. Pendientes:
 
-1. **Número de WhatsApp.** Hoy hay un placeholder `5493794000000` en 4 lugares (`index.html`: botones del hero, contacto y flotante). Reemplazar por el número real en formato internacional sin `+` ni espacios (ej: `549379XXXXXXX`).
-2. **Horarios de atención** (sección Contacto).
-3. **Texto definitivo de "Nosotros"** (hoy es provisorio).
+1. ~~**Número de WhatsApp.**~~ ✅ Listo: `+54 9 379 456-8826` (`5493794568826`) en los 4 enlaces y en el JSON-LD.
+2. **Horarios de atención** (sección Contacto) — aún a confirmar.
+3. **Texto definitivo de "Nosotros"** — a confirmar (ya se quitó la nota de "provisorio").
 
 ### Opcional / mejoras
 
