@@ -56,7 +56,7 @@ Después del deploy, confirmá que `https://formen.ar` carga con candado y sin e
 Buscá los comentarios `TODO` en el código. Pendientes:
 
 1. ~~**Número de WhatsApp.**~~ ✅ Listo: `+54 9 379 456-8826` (`5493794568826`) en los 4 enlaces y en el JSON-LD.
-2. **Horarios de atención** (sección Contacto) — aún a confirmar.
+2. ~~**Horarios de atención**~~ ✅ Listo: Lun–Vie 8.30–12.30 y 17–21, Sáb 9–13 y 17–21, Dom cerrado (en Contacto y en el JSON-LD).
 3. **Texto definitivo de "Nosotros"** — a confirmar (ya se quitó la nota de "provisorio").
 
 ### Opcional / mejoras

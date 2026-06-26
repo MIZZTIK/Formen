@@ -201,6 +201,11 @@ h1, h2, h3, h4 { font-family: var(--serif); font-weight: 600; line-height: 1.15;
 .contact-h:first-child { margin-top: 0; }
 .contact-line { margin: 0; color: var(--text); }
 .contact-list { list-style: none; padding: 0; margin: .4rem 0 0; display: flex; flex-direction: column; gap: .4rem; }
+.hours-list { list-style: none; padding: 0; margin: .4rem 0 0; display: flex; flex-direction: column; gap: .15rem; max-width: 380px; }
+.hours-list li { display: flex; justify-content: space-between; gap: 18px; padding: .45rem 0; border-bottom: 1px solid var(--line); }
+.hours-list li:last-child { border-bottom: 0; }
+.hours-day { color: var(--text); }
+.hours-time { color: var(--muted); text-align: right; white-space: nowrap; }
 .contact-cta { margin-top: 2rem; align-self: flex-start; }
 .contact-map { min-height: 360px; border-radius: var(--radius); overflow: hidden; border: 1px solid var(--line); }
 .contact-map iframe { display: block; width: 100%; height: 100%; min-height: 360px; filter: grayscale(.3) contrast(1.05); }
