@@ -101,7 +101,8 @@ h1, h2, h3, h4 { font-family: var(--serif); font-weight: 600; line-height: 1.15;
 .header-inner { display: flex; align-items: center; justify-content: space-between; height: 72px; }
 
 .brand { display: flex; flex-direction: column; line-height: 1; }
-.brand-mark { font-family: var(--serif); font-weight: 700; font-size: 1.5rem; letter-spacing: .22em; }
+/* Wordmark "FORMEN": sans bold, replicando el logo de la marca. */
+.brand-mark { font-family: var(--sans); font-weight: 800; font-size: 1.5rem; letter-spacing: .05em; }
 .brand-sub { font-size: .62rem; letter-spacing: .3em; text-transform: uppercase; color: var(--muted); margin-top: 4px; }
 
 .nav { display: flex; align-items: center; }
@@ -213,7 +214,7 @@ h1, h2, h3, h4 { font-family: var(--serif); font-weight: 600; line-height: 1.15;
 /* ---------- Footer ---------- */
 .site-footer { background: #0a0b0d; border-top: 1px solid var(--line); }
 .footer-inner { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 36px; padding: 64px 24px 40px; }
-.footer-brand { font-size: 1.7rem; letter-spacing: .22em; display: block; }
+.footer-brand { font-size: 1.7rem; letter-spacing: .05em; display: block; }
 .footer-tag { color: var(--muted); font-style: italic; font-family: var(--serif); margin: .5rem 0 0; }
 .footer-h { font-size: .82rem; letter-spacing: .18em; text-transform: uppercase; color: var(--gold); margin: 0 0 .8rem; }
 .footer-col p { margin: .25rem 0; color: var(--muted); font-size: .95rem; }
