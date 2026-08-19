@@ -1,0 +1,1241 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "AVC",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -2800,
+        200
+      ],
+      "id": "ed64d153-91d1-412e-a4fa-16a444abee42",
+      "name": "Webhook",
+      "webhookId": "avc-wasender-webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "f0000000-0000-0000-0000-000000000001",
+              "name": "text",
+              "value": "={{ $json.body['message[add][0][text]'] }}",
+              "type": "string"
+            },
+            {
+              "id": "f0000000-0000-0000-0000-000000000002",
+              "name": "leadId",
+              "value": "={{ $json.body['message[add][0][element_id]'] }}",
+              "type": "string"
+            },
+            {
+              "id": "f0000000-0000-0000-0000-000000000003",
+              "name": "name",
+              "value": "={{ $json.body['message[add][0][author][name]'] }}",
+              "type": "string"
+            },
+            {
+              "id": "f0000000-0000-0000-0000-000000000004",
+              "name": "tipo",
+              "value": "={{ $json.body['message[add][0][type]'] }}",
+              "type": "string"
+            },
+            {
+              "id": "f0000000-0000-0000-0000-000000000005",
+              "name": "sessionId",
+              "value": "={{ $json.body['message[add][0][element_id]'] }}",
+              "type": "string"
+            },
+            {
+              "id": "f0000000-0000-0000-0000-000000000006",
+              "name": "hoy",
+              "value": "={{ $now.setZone('America/Asuncion').setLocale('es').toFormat(\"cccc dd/MM/yyyy HH:mm\") }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2600,
+        200
+      ],
+      "id": "f4a95113-1715-4a72-8e36-44df802dcb17",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "cc000000-0000-0000-0000-000000000001",
+              "leftValue": "={{ $json.tipo }}",
+              "rightValue": "incoming",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -2400,
+        200
+      ],
+      "id": "aa000000-0000-0000-0000-000000000001",
+      "name": "Es entrante?"
+    },
+    {
+      "parameters": {
+        "url": "=https://briefavc.kommo.com/api/v4/leads/{{ $('Edit Fields1').first().json.leadId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -2200,
+        200
+      ],
+      "id": "ff000000-0000-0000-0000-000000000003",
+      "name": "Buscar estado lead",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BqHFVJZcWvtdH6ee",
+          "name": "Kommo AVC"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = ($json && $json.data) ? JSON.parse($json.data) : ($json || {});\nconst statusId = Number(raw.status_id) || 108736471;\nconst NAMES = {108736471:'Leads entrantes',109108699:'Bot pausado (asesor atendiendo)',109670139:'Contactado por personal',108736475:'Contactado',108736479:'Necesidad relevada',108736483:'Reunion / Diagnostico',108736487:'Propuesta enviada',108737583:'Negociacion',142:'Ganado',143:'Perdido'};\nconst estadoNombre = NAMES[statusId] || 'Sin clasificar';\n// buffer acumulado de mensajes previos (si los hay)\nconst cfs = (raw && raw.custom_fields_values) || [];\nconst fb = cfs.find(c => Number(c.field_id) === 1933244);\nconst bufferRaw = (fb && fb.values && fb.values[0]) ? fb.values[0].value : '';\nlet buffer = { msgs: [], ts: 0 };\ntry { if (bufferRaw) buffer = JSON.parse(bufferRaw); } catch (e) {}\nif (!Array.isArray(buffer.msgs)) buffer.msgs = [];\nreturn [{ json: { statusId, estadoNombre, leadId: $('Edit Fields1').first().json.leadId, bufferMsgs: buffer.msgs } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2000,
+        200
+      ],
+      "id": "ff000000-0000-0000-0000-000000000004",
+      "name": "Estado lead"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "pp000000-0000-0000-0000-000000000001",
+              "leftValue": "={{ $json.statusId === 109108699 || $json.statusId === 109670139 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1800,
+        200
+      ],
+      "id": "pp000000-0000-0000-0000-000000000010",
+      "name": "Pausado?"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ \"Fecha y hora actual en Paraguay: \" + $('Edit Fields1').first().json.hoy + \". Etapa actual del cliente en el CRM: \" + $('Estado lead').first().json.estadoNombre + \". TURNOS DISPONIBLES REALES: \" + $('Calcular turnos').first().json.turnosLibres + \". Mensaje del cliente: \" + $('Ultimo mensaje?').first().json.textoJunto }}",
+        "options": {
+          "systemMessage": "Sos el asistente virtual de AVC Soluciones Empresariales, una consultora paraguaya de asesoria empresarial integral. Atendes a potenciales clientes por WhatsApp, Instagram y Facebook. Tu objetivo es entender la consulta, relevar los datos del cliente y COORDINAR (o CANCELAR) una REUNION de diagnostico.\n\nIDIOMA (REGLA CRITICA, NO LA IGNORES): Responde SIEMPRE en el MISMO idioma en que te escribe el cliente. MUCHOS clientes son de BRASIL y escriben en PORTUGUES: en ese caso responde TODO en portugues (saludo, preguntas, agenda, cierre, absolutamente todo). Si te escribe en ingles, responde en ingles. PROHIBIDO responder en espanol a alguien que te escribio en portugues o en ingles. Solo usa espanol (Paraguay) si el cliente escribe en espanol o si no se puede determinar el idioma. Fijate en el 'Mensaje del cliente' para detectar el idioma en CADA respuesta. Tono profesional, cordial y de confianza.\n\nCONTEXTO DE FECHA: Al inicio de cada mensaje recibis la fecha y hora actual de Paraguay. Usala para interpretar fechas relativas. NUNCA repitas ese contexto al cliente.\n\nCONTEXTO DE ETAPA: Tambien recibis la etapa actual del cliente en el CRM. Usala para adaptar tu respuesta (NUNCA le menciones el nombre de la etapa):\n- 'Leads entrantes' o 'Incoming leads': es el PRIMER mensaje. SOLO aca te presentas como AVC y saludas.\n- 'Contactado': la conversacion YA EMPEZO y ya te presentaste. NO vuelvas a saludar, NO te presentes de nuevo, NO repitas 'AVC Soluciones Empresariales'. Continua directo relevando nombre/necesidad.\n- 'Necesidad relevada': ya sabes que servicio necesita; enfocate en coordinar la reunion.\n- 'Reunion / Diagnostico': el cliente YA tiene una reunion agendada; NO ofrezcas agendar de nuevo; responde dudas o, si lo pide, gestiona reprogramar o cancelar.\n\nTU SALIDA SIEMPRE ES UN JSON VALIDO, sin texto antes ni despues, sin markdown. Formato EXACTO:\n\n{\n\"reply\": \"mensaje para el cliente\",\n\"customerName\": null,\n\"empresa\": null,\n\"email\": null,\n\"servicioInteres\": null,\n\"tema\": null,\n\"idioma\": \"ES\",\n\"agendar\": false,\n\"cancelar\": false,\n\"fechaHoraISO\": null\n}\n\nSERVICIOS DE AVC (no inventes otros):\n1. Asesoria contable y fiscal\n2. Auditorias internas y externas\n3. Gestion de recursos humanos\n4. Asesoria juridica empresarial\n5. Consultoria en marketing y publicidad\n6. Capacitaciones y acompanamiento a emprendedores\n7. Tecnologia y Sistemas\n\nFLUJO:\n1. SOLO en el primer mensaje (etapa 'Leads entrantes'): presentate de forma FORMAL y PROFESIONAL, que inspire confianza y seriedad, con el nombre completo 'AVC Soluciones Empresariales', y pedi el nombre del cliente (customerName). Adapta el saludo al IDIOMA del cliente. Ejemplos del tono buscado:\n   - Espanol: 'Le damos la bienvenida a AVC Soluciones Empresariales, su consultora de confianza en asesoria empresarial integral. Sera un gusto acompanarlo. Para comenzar, con quien tengo el gusto de hablar?'\n   - Portugues: 'Seja bem-vindo a AVC Soluciones Empresariales, sua consultoria de confianca em assessoria empresarial integral. Sera um prazer acompanha-lo. Para comecar, com quem eu tenho o prazer de falar?'\n   Si la etapa ya es 'Contactado' o posterior, NO saludes ni te presentes de nuevo.\n2. Entende que servicio necesita (servicioInteres) y un resumen del tema (tema). Pedi la empresa (empresa) si aplica.\n3. Ofrece coordinar una REUNION de diagnostico: virtual, aproximadamente 1 hora, por Google Meet.\n4. Para AGENDAR necesitas SI O SI: el email del cliente y un dia y horario concretos.\n   - Si no tenes el email, pedilo.\n   - HORARIO: lunes a viernes. Las reuniones duran aproximadamente 1 hora y son SIEMPRE EN PUNTO, una por hora.\n   - NUNCA agendes una reunion para hoy ni para manana. Las reuniones se coordinan con AL MENOS 2 DIAS DE ANTELACION (recien de pasado manana en adelante)\n     como minimo. Si el cliente pide para hoy, explicale con amabilidad que la agenda de hoy ya esta\n     cerrada y ofrecele los turnos disponibles de pasado manana en adelante.\n   - TURNOS VALIDOS, UNICAMENTE ESTOS (hora Paraguay): 08:00, 09:00, 10:00, 11:00, 12:00, 13:00, 14:00, 15:00, 16:00 y 17:00.\n   - NUNCA agendes en un horario que no este en esa lista. Nada de 10:15, 10:30, 16:45 ni similares.\n   - Si el cliente pide un horario intermedio (ej. 10:20), no lo rechaces seco: ofrecele el turno en punto mas cercano de la lista (ej. 10:00 o 11:00).\n   - DISPONIBILIDAD REAL: en cada mensaje recibis 'TURNOS DISPONIBLES REALES', que es la lista de turnos\n     efectivamente libres en el calendario. Ofrecé SIEMPRE 2 o 3 opciones de ESA lista, nunca inventes otras\n     ni ofrezcas turnos que no figuren ahi. Ej: 'Tengo martes 22/07 10:00, martes 22/07 15:00 o miercoles 23/07 09:00, cual te sirve?'\n   - Si el cliente pide un dia/hora que NO esta en la lista, decile que ese no esta disponible y ofrecele\n     las opciones mas cercanas de la lista.\n   - Si la lista dice 'SIN TURNOS DISPONIBLES', avisale que por ahora no hay agenda libre y que un asesor lo va a contactar.\n   - Si piden fuera de rango, feriado o fin de semana, ofrece alternativas de la lista.\n5. Cuando tengas email + dia y hora validos y el cliente CONFIRME, pone \"agendar\": true y \"fechaHoraISO\" en formato \"YYYY-MM-DDTHH:MM:00\" (hora Paraguay, sin zona). En reply confirma la reunion.\n6. DISPONIBILIDAD: el sistema valida que el horario este libre. Si esta ocupado, al cliente se le avisa y te pide otro; ofrece un horario distinto.\n\nFLUJO ESPECIAL: INVERSORES / LEY DE MAQUILA (Paraguay)\nACTIVACION: si el cliente expresa interes en INVERTIR EN PARAGUAY (o menciona inversion extranjera, Ley de Maquila, regimen de incentivos fiscales, zona franca, radicar o constituir una empresa para invertir), DEJA el flujo general y segui ESTE guion de precalificacion. Poné servicioInteres = \"Inversion extranjera (Ley de Maquila)\" (en este caso especifico se permite este servicio aunque no este en la lista de los 7).\n\nREGLAS DEL GUION:\n- Haces UNA pregunta por mensaje, en orden, y esperas la respuesta. NO mandes todas las preguntas juntas.\n- Usa los textos tal cual (podes adaptar minimamente, manteniendo el sentido y la formalidad).\n- Interpreta respuestas afirmativas/negativas aunque el cliente conteste informal (si, no, \"mas o menos\", \"unos 80 mil\", etc.).\n\nSECUENCIA:\n1. (Primer mensaje del flujo) \"Gracias por su interes en invertir en Paraguay. Le hare unas preguntas breves para identificar el regimen que podria ajustarse mejor a su proyecto.\" Y a continuacion hace la pregunta 2.\n2. \"La inversion inicial estimada sera igual o superior a USD 50.000?\"\n   - Si la respuesta es NO / menor a 50.000 -> anda directo al PASO 8.\n   - Si es SI / igual o mayor -> segui con la 3.\n3. \"Su proyecto esta orientado principalmente a vender bienes o servicios a clientes del exterior?\"\n4. \"La actividad necesita instalarse fisicamente dentro de una zona franca para almacenar, transformar, ensamblar o reexportar productos?\"\n5. \"El proyecto incluye maquinarias, equipos, ampliacion productiva, tecnologia, empleo o materias primas industriales?\"\n   (Las respuestas de la 3, 4 y 5 son informativas: registralas para el asesor; NO cambian el resultado. El unico filtro duro es la 2.)\n6. \"Con la informacion proporcionada, su proyecto presenta compatibilidad preliminar. El siguiente paso es una reunion de diagnostico y revision documental.\"\n7. \"Para orientarle correctamente necesitamos algunos datos adicionales sobre inversion, actividad, clientes, ubicacion y proceso operativo.\"\n   -> Luego COORDINA la reunion de diagnostico por Google Meet con las MISMAS reglas de agenda (lunes a viernes, turnos en punto, al menos 2 dias de antelacion, solo de los TURNOS DISPONIBLES REALES, reunion de 1 hora). Al confirmar, poné agendar:true con email y fechaHoraISO como siempre.\n8. (NO CALIFICA para incentivos, inversion menor a USD 50.000) \"Por ahora el proyecto no coincide con los criterios principales del regimen de incentivos fiscales, pero podemos evaluar alternativas de formalizacion. Podemos ayudarlo con su radicacion, constitucion y formalizacion de su empresa, emprendimiento o algun otro servicio de su interes.\" -> IGUAL ofrecele coordinar una reunion para ver esas alternativas (mismo mecanismo de agenda). NO lo despidas sin ofrecer la reunion.\n\nREGISTRO PARA EL ASESOR: en el campo \"tema\" resumi las respuestas de la calificacion. Ej: \"Inversion >=50k: si; vende al exterior: si; zona franca: no; maquinaria/tecnologia: si\".\n\nCANCELACION:\n- Si el cliente quiere CANCELAR su reunion, pone \"cancelar\": true y en reply confirma la cancelacion.\n- Nunca pongas \"agendar\" y \"cancelar\" en true al mismo tiempo.\n\nREGLAS:\n- MUY IMPORTANTE: el campo \"reply\" DEBE tener MENOS de 240 caracteres. Se muy conciso y directo, sin listas largas.\n- Respuestas breves (2 o 3 lineas). NO uses emojis: el sistema de Kommo no los soporta y cortan el mensaje a la mitad.\n- SALUDA Y PRESENTATE COMO AVC UNA SOLA VEZ, en el primer mensaje (etapa 'Leads entrantes'). En cualquier otra etapa la conversacion ya empezo: PROHIBIDO volver a saludar, presentarte o repetir 'AVC Soluciones Empresariales'. Anda directo al punto.\n- No inventes servicios, precios ni plazos.\n- Campos en null si no los sabes.\n- \"fechaHoraISO\" solo cuando \"agendar\" es true.\n- Tu respuesta final SIEMPRE es un JSON valido, sin nada afuera."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        -1550,
+        200
+      ],
+      "id": "c666b259-c04d-42b8-bab7-4f33d2fd83d6",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        -1600,
+        420
+      ],
+      "id": "7530a55a-4d15-41a5-853a-a2c268d92f62",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "U8exa9B7bGjLh4cw",
+          "name": "AVC"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Edit Fields1').first().json.leadId }}",
+        "contextWindowLength": 15
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        -1440,
+        420
+      ],
+      "id": "859a127e-8f04-46c6-9828-8dad27f76f8d",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst SAFE = 'Disculpa, tuve un inconveniente para procesar tu mensaje. Un asesor te va a responder a la brevedad.';\nconst noEmoji = (s) => (s || '').toString().replace(/[\\u{10000}-\\u{10FFFF}️]/gu, '');\n\nreturn items.map((item) => {\n  let raw = item.json.output || item.json.text || item.json.response || item.json.message || \"\";\n  raw = (typeof raw === \"string\") ? raw : JSON.stringify(raw);\n  raw = raw.replace(/```json/gi, \"\").replace(/```/g, \"\").trim();\n\n  const a = raw.indexOf('{');\n  const b = raw.lastIndexOf('}');\n  const jsonStr = (a !== -1 && b !== -1 && b > a) ? raw.slice(a, b + 1) : raw;\n\n  let parsed = null;\n  try {\n    parsed = JSON.parse(jsonStr);\n  } catch (e) {\n    const m = raw.match(/\"reply\"\\s*:\\s*\"((?:[^\"\\\\]|\\\\.)*)\"/);\n    let r = SAFE;\n    if (m && m[1]) {\n      try { r = JSON.parse('\"' + m[1] + '\"'); } catch (e2) { r = m[1].replace(/\\\\n/g, '\\n').replace(/\\\\\"/g, '\"'); }\n    }\n    parsed = { reply: r, customerName: null, empresa: null, email: null, servicioInteres: null, tema: null, idioma: \"ES\", agendar: false, cancelar: false, fechaHoraISO: null };\n  }\n\n  const cancelar = parsed.cancelar === true;\n  let agendar = !cancelar && parsed.agendar === true && !!parsed.fechaHoraISO && !!parsed.email;\n  let replyFinal = noEmoji(parsed.reply).trim();\n  if (!replyFinal) { replyFinal = SAFE; }\n\n  // GUARD: nunca agendar el mismo dia (ni fechas pasadas)\n  if (agendar) {\n    const minFecha = $now.setZone('America/Asuncion').plus({ days: 2 }).startOf('day');\n    const pedida = DateTime.fromISO(parsed.fechaHoraISO, { zone: 'America/Asuncion' });\n    if (!pedida.isValid || pedida < minFecha) {\n      agendar = false;\n      replyFinal = 'Coordinamos las reuniones con al menos 2 dias de antelacion. Decime que dia (de pasado manana en adelante) y horario te viene bien y lo agendamos.';\n    }\n  }\n\n  return { json: {\n    reply: replyFinal,\n    nombreDetectado: noEmoji(parsed.customerName || \"\").trim(),\n    nombre: parsed.customerName || $('Edit Fields1').first().json.name || \"\",\n    empresa: parsed.empresa || \"\",\n    email: parsed.email || \"\",\n    servicio: parsed.servicioInteres || \"\",\n    tema: parsed.tema || \"\",\n    idioma: parsed.idioma || \"ES\",\n    agendar, cancelar,\n    fechaHoraISO: parsed.fechaHoraISO || null,\n    leadId: $('Edit Fields1').first().json.leadId,\n  } };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1250,
+        200
+      ],
+      "id": "ba7d7b2b-6470-45d2-9308-20eaf74fa576",
+      "name": "Parsear respuesta IA"
+    },
+    {
+      "parameters": {
+        "jsCode": "const parse = $('Parsear respuesta IA').first().json;\nconst current = Number($('Estado lead').first().json.statusId) || 108736471;\nconst ORDER = {108736471:0,108736475:1,108736479:2,108736483:3,109670139:3.5,108736487:4,108737583:5,142:6,143:6};\nlet base = 108736475;\nif (parse.servicio) base = 108736479;\nconst co = (ORDER[current] != null) ? ORDER[current] : 0;\nconst to = (ORDER[base] != null) ? ORDER[base] : 0;\nconst targetStatus = to > co ? base : current;\nreturn [{ json: { targetStatus, leadId: parse.leadId } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1050,
+        200
+      ],
+      "id": "ff000000-0000-0000-0000-000000000002",
+      "name": "Decidir etapa"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://briefavc.kommo.com/api/v4/leads/{{ $json.leadId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify(Object.assign({ status_id: $json.targetStatus, pipeline_id: 14086271 }, ($('Parsear respuesta IA').first().json.nombreDetectado ? { name: $('Parsear respuesta IA').first().json.nombreDetectado } : {}))) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -850,
+        200
+      ],
+      "id": "dd000000-0000-0000-0000-000000000001",
+      "name": "Mover a etapa",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BqHFVJZcWvtdH6ee",
+          "name": "Kommo AVC"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "c1000000-0000-0000-0000-000000000001",
+              "leftValue": "={{ $('Parsear respuesta IA').first().json.cancelar }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -650,
+        200
+      ],
+      "id": "c1000000-0000-0000-0000-000000000010",
+      "name": "Cancelar?"
+    },
+    {
+      "parameters": {
+        "url": "=https://briefavc.kommo.com/api/v4/leads/{{ $('Parsear respuesta IA').first().json.leadId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -450,
+        20
+      ],
+      "id": "c1000000-0000-0000-0000-000000000002",
+      "name": "Buscar lead",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BqHFVJZcWvtdH6ee",
+          "name": "Kommo AVC"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $json.data ? JSON.parse($json.data) : $json;\nconst cfs = (raw && raw.custom_fields_values) || [];\nconst f = cfs.find(c => Number(c.field_id) === 1679524);\nconst eventId = (f && f.values && f.values[0]) ? f.values[0].value : null;\nreturn [{ json: { eventId } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -250,
+        20
+      ],
+      "id": "c1000000-0000-0000-0000-000000000099",
+      "name": "Extraer Evento_id"
+    },
+    {
+      "parameters": {
+        "method": "DELETE",
+        "url": "=https://www.googleapis.com/calendar/v3/calendars/4e6e578a870ac6a9cac365edb69974a43de621b41207be4d9d8d5ded486f1dbb%40group.calendar.google.com/events/{{ $json.eventId || 'none' }}?sendUpdates=all",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -50,
+        20
+      ],
+      "id": "c1000000-0000-0000-0000-000000000003",
+      "name": "Cancelar evento",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "9yYQShk9v3idvbD3",
+          "name": "AVC Calendar"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://briefavc.kommo.com/api/v4/leads/{{ $('Parsear respuesta IA').first().json.leadId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ custom_fields_values: [ { field_id: 1211984, values: [{ value: ($('Parsear respuesta IA').first().json.reply || '').toString().substring(0, 255) }] }, { field_id: 1679524, values: [{ value: '' }] } ] }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        150,
+        20
+      ],
+      "id": "c1000000-0000-0000-0000-000000000004",
+      "name": "Escribir cancelacion",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BqHFVJZcWvtdH6ee",
+          "name": "Kommo AVC"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "bb000000-0000-0000-0000-000000000001",
+              "leftValue": "={{ $('Parsear respuesta IA').first().json.agendar }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -450,
+        360
+      ],
+      "id": "bb000000-0000-0000-0000-000000000002",
+      "name": "Agendar?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/calendar/v3/freeBusy",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ timeMin: DateTime.fromISO($('Parsear respuesta IA').first().json.fechaHoraISO, { zone: 'America/Asuncion' }).toISO(), timeMax: DateTime.fromISO($('Parsear respuesta IA').first().json.fechaHoraISO, { zone: 'America/Asuncion' }).plus({ minutes: 60 }).toISO(), items: [{ id: '4e6e578a870ac6a9cac365edb69974a43de621b41207be4d9d8d5ded486f1dbb@group.calendar.google.com' }] }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -250,
+        360
+      ],
+      "id": "bb000000-0000-0000-0000-000000000003",
+      "name": "FreeBusy",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "9yYQShk9v3idvbD3",
+          "name": "AVC Calendar"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "bb000000-0000-0000-0000-000000000004",
+              "leftValue": "={{ (($json.calendars && $json.calendars['4e6e578a870ac6a9cac365edb69974a43de621b41207be4d9d8d5ded486f1dbb@group.calendar.google.com'] && $json.calendars['4e6e578a870ac6a9cac365edb69974a43de621b41207be4d9d8d5ded486f1dbb@group.calendar.google.com'].busy) || []).length === 0 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -50,
+        360
+      ],
+      "id": "bb000000-0000-0000-0000-000000000005",
+      "name": "Libre?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/calendar/v3/calendars/4e6e578a870ac6a9cac365edb69974a43de621b41207be4d9d8d5ded486f1dbb%40group.calendar.google.com/events?sendUpdates=all&conferenceDataVersion=1",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ summary: 'Reunion AVC - ' + $('Parsear respuesta IA').first().json.nombre, description: 'Servicio: ' + $('Parsear respuesta IA').first().json.servicio + ' | Empresa: ' + $('Parsear respuesta IA').first().json.empresa + ' | Tema: ' + $('Parsear respuesta IA').first().json.tema + ' | Email: ' + $('Parsear respuesta IA').first().json.email + ' | Lead Kommo: ' + $('Parsear respuesta IA').first().json.leadId, start: { dateTime: $('Parsear respuesta IA').first().json.fechaHoraISO, timeZone: 'America/Asuncion' }, end: { dateTime: DateTime.fromISO($('Parsear respuesta IA').first().json.fechaHoraISO).plus({ minutes: 60 }).toISO({ includeOffset: false, suppressMilliseconds: true }), timeZone: 'America/Asuncion' }, attendees: [{ email: $('Parsear respuesta IA').first().json.email }], conferenceData: { createRequest: { requestId: 'avc-' + $('Parsear respuesta IA').first().json.leadId + '-' + $now.toMillis(), conferenceSolutionKey: { type: 'hangoutsMeet' } } }, reminders: { useDefault: false, overrides: [{ method: 'popup', minutes: 120 }, { method: 'email', minutes: 120 }] } }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        150,
+        280
+      ],
+      "id": "ee000000-0000-0000-0000-000000000001",
+      "name": "Crear evento",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "9yYQShk9v3idvbD3",
+          "name": "AVC Calendar"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://briefavc.kommo.com/api/v4/leads/{{ $('Parsear respuesta IA').first().json.leadId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ custom_fields_values: [ { field_id: 1211984, values: [{ value: ($('Parsear respuesta IA').first().json.reply || '').toString().substring(0, 190) + ' ' + ($json.hangoutLink || '') }] }, { field_id: 1679524, values: [{ value: $json.id }] } ] }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        350,
+        280
+      ],
+      "id": "ee000000-0000-0000-0000-000000000002",
+      "name": "Escribir confirmacion",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BqHFVJZcWvtdH6ee",
+          "name": "Kommo AVC"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://briefavc.kommo.com/api/v4/leads/{{ $('Parsear respuesta IA').first().json.leadId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ status_id: 108736483, pipeline_id: 14086271 }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        550,
+        280
+      ],
+      "id": "ee000000-0000-0000-0000-000000000005",
+      "name": "Mover a Reunion",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BqHFVJZcWvtdH6ee",
+          "name": "Kommo AVC"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://briefavc.kommo.com/api/v4/leads/{{ $('Parsear respuesta IA').first().json.leadId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ custom_fields_values: [{ field_id: 1211984, values: [{ value: 'Uy, ese turno ya esta reservado. Los turnos son en punto, de 08:00 a 17:00 (lunes a viernes). Decime otro y lo agendamos!' }] }] }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        150,
+        480
+      ],
+      "id": "ee000000-0000-0000-0000-000000000003",
+      "name": "Escribir ocupado",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BqHFVJZcWvtdH6ee",
+          "name": "Kommo AVC"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://briefavc.kommo.com/api/v4/leads/{{ $('Parsear respuesta IA').first().json.leadId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ custom_fields_values: [{ field_id: 1211984, values: [{ value: ($('Parsear respuesta IA').first().json.reply || '').toString().substring(0, 255) }] }] }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -250,
+        620
+      ],
+      "id": "ee000000-0000-0000-0000-000000000004",
+      "name": "Escribir respuesta normal",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BqHFVJZcWvtdH6ee",
+          "name": "Kommo AVC"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Dedup: Kommo dispara el webhook varias veces por mensaje. Ignora repetidos.\nconst item = $input.first();\nconst body = (item.json && item.json.body) ? item.json.body : {};\nconst id = body['message[add][0][id]'];\nconst key = id || ((body['message[add][0][element_id]'] || '') + '_' + (body['message[add][0][text]'] || '') + '_' + (body['message[add][0][created_at]'] || ''));\nconst store = $getWorkflowStaticData('global');\nif (!store.seen) store.seen = [];\nif (key && store.seen.indexOf(key) !== -1) { return []; }\nif (key) { store.seen.push(key); if (store.seen.length > 300) { store.seen = store.seen.slice(-300); } }\nreturn $input.all();"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -3080,
+        -688
+      ],
+      "id": "de0d0000-avc0-avc0-avc0-dedupmensaje01",
+      "name": "Dedup mensaje"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://briefavc.kommo.com/api/v2/salesbot/run",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify([{ bot_id: 52978, entity_id: Number($('Parsear respuesta IA').first().json.leadId), entity_type: 2 }]) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        420,
+        -624
+      ],
+      "id": "aa11bb22-avc0-avc0-avc0-lanzarsalesbot",
+      "name": "Lanzar Salesbot",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BqHFVJZcWvtdH6ee",
+          "name": "Kommo AVC"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Acumula el mensaje nuevo sobre lo que ya habia y estampa la hora.\n// IMPORTANTE: se limpian emojis (el campo bot_buffer de Kommo trunca en el primer emoji astral\n// -> JSON corrupto -> el bot se traba). Astral = 4 bytes (utf8mb4 no soportado por Kommo).\nconst noEmoji = (s) => (s || '').toString().replace(/[\\u{10000}-\\u{10FFFF}\\uFE0F]/gu, '');\nconst prev = ($('Estado lead').first().json.bufferMsgs || []).map(noEmoji);\nconst nuevo = noEmoji($('Edit Fields1').first().json.text || '');\nconst msgs = prev.concat([nuevo]);\nconst stamp = Date.now();\nreturn [{ json: {\n  leadId: $('Edit Fields1').first().json.leadId,\n  stamp: stamp,\n  bufferJson: JSON.stringify({ msgs: msgs, ts: stamp })\n} }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -992,
+        1600
+      ],
+      "id": "bf000001-0001-0001-0001-prepararbuffer",
+      "name": "Preparar buffer"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://briefavc.kommo.com/api/v4/leads/{{ $json.leadId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ custom_fields_values: [{ field_id: 1933244, values: [{ value: $json.bufferJson }] }] }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -800,
+        1600
+      ],
+      "id": "bf000002-0002-0002-0002-guardarbuffer0",
+      "name": "Guardar buffer",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BqHFVJZcWvtdH6ee",
+          "name": "Kommo AVC"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "amount": 8
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -608,
+        1600
+      ],
+      "id": "bf000003-0003-0003-0003-esperarbuffer0",
+      "name": "Esperar",
+      "webhookId": "avc-buffer-wait-8s"
+    },
+    {
+      "parameters": {
+        "url": "=https://briefavc.kommo.com/api/v4/leads/{{ $('Preparar buffer').first().json.leadId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -416,
+        1600
+      ],
+      "id": "bf000004-0004-0004-0004-releerbuffer00",
+      "name": "Releer buffer",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BqHFVJZcWvtdH6ee",
+          "name": "Kommo AVC"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Si mientras esperaba llego otro mensaje, el ts del buffer cambio -> esta ejecucion muere\n// y contesta la ultima. Si sigo siendo el ultimo, junto todo y sigo.\nconst raw = ($json && $json.data) ? JSON.parse($json.data) : ($json || {});\nconst cfs = (raw && raw.custom_fields_values) || [];\nconst fb = cfs.find(c => Number(c.field_id) === 1933244);\nconst bufferRaw = (fb && fb.values && fb.values[0]) ? fb.values[0].value : '';\nlet buffer = { msgs: [], ts: 0 };\ntry { if (bufferRaw) buffer = JSON.parse(bufferRaw); } catch (e) {}\nconst miStamp = $('Preparar buffer').first().json.stamp;\nif (Number(buffer.ts) !== Number(miStamp)) { return []; }\nconst texto = (buffer.msgs || []).join('\\n');\nreturn [{ json: { leadId: $('Preparar buffer').first().json.leadId, textoJunto: texto } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        1600
+      ],
+      "id": "bf000005-0005-0005-0005-ultimomensaje0",
+      "name": "Ultimo mensaje?"
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "=https://briefavc.kommo.com/api/v4/leads/{{ $json.leadId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ custom_fields_values: [{ field_id: 1933244, values: [{ value: '' }] }] }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -32,
+        1600
+      ],
+      "id": "bf000006-0006-0006-0006-limpiarbuffer0",
+      "name": "Limpiar buffer",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BqHFVJZcWvtdH6ee",
+          "name": "Kommo AVC"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.googleapis.com/calendar/v3/freeBusy",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleCalendarOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ timeMin: $now.toISO(), timeMax: $now.plus({ days: 14 }).toISO(), items: [{ id: '4e6e578a870ac6a9cac365edb69974a43de621b41207be4d9d8d5ded486f1dbb@group.calendar.google.com' }] }) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        160,
+        1600
+      ],
+      "id": "tl000001-0001-0001-0001-turnoslibres0",
+      "name": "Turnos libres",
+      "credentials": {
+        "googleCalendarOAuth2Api": {
+          "id": "9yYQShk9v3idvbD3",
+          "name": "AVC Calendar"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Cruza los turnos en punto (08-17, L-V) contra los bloques ocupados del calendario.\n// REGLA: nunca el mismo dia -> se arranca desde manana.\nconst CAL = '4e6e578a870ac6a9cac365edb69974a43de621b41207be4d9d8d5ded486f1dbb@group.calendar.google.com';\nconst cal = ($json.calendars && $json.calendars[CAL]) ? $json.calendars[CAL] : {};\nconst ocupados = (cal.busy || []).map(b => ({\n  ini: new Date(b.start).getTime(),\n  fin: new Date(b.end).getTime()\n}));\n\nconst ahora = $now.setZone('America/Asuncion');\nconst minimo = ahora.plus({ days: 2 }).startOf('day').toMillis();   // desde pasado manana (2 dias de antelacion)\nconst HORAS = [8,9,10,11,12,13,14,15,16,17];\nconst DIAS = {1:'lunes',2:'martes',3:'miercoles',4:'jueves',5:'viernes',6:'sabado',7:'domingo'};\n\nconst libres = [];\nfor (let d = 2; d <= 16 && libres.length < 6; d++) {   // d arranca en 2 = pasado manana (2 dias antelacion)\n  const dia = ahora.plus({ days: d });\n  if (dia.weekday > 5) continue;                       // solo lunes a viernes\n  for (const h of HORAS) {\n    if (libres.length >= 6) break;\n    const ini = dia.set({ hour: h, minute: 0, second: 0, millisecond: 0 });\n    const iniMs = ini.toMillis();\n    if (iniMs < minimo) continue;\n    const finMs = iniMs + 60 * 60 * 1000;\n    const chocado = ocupados.some(o => iniMs < o.fin && finMs > o.ini);\n    if (chocado) continue;\n    libres.push(DIAS[dia.weekday] + ' ' + dia.toFormat('dd/MM') + ' ' + ini.toFormat('HH:mm'));\n  }\n}\n\nconst turnosLibres = libres.length ? libres.join(' | ') : 'SIN TURNOS DISPONIBLES en los proximos dias';\nreturn [{ json: { turnosLibres } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        1600
+      ],
+      "id": "tl000002-0002-0002-0002-calculaturnos",
+      "name": "Calcular turnos"
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Dedup mensaje",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Es entrante?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Es entrante?": {
+      "main": [
+        [
+          {
+            "node": "Buscar estado lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Buscar estado lead": {
+      "main": [
+        [
+          {
+            "node": "Estado lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Estado lead": {
+      "main": [
+        [
+          {
+            "node": "Pausado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pausado?": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Preparar buffer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          {
+            "node": "Parsear respuesta IA",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parsear respuesta IA": {
+      "main": [
+        [
+          {
+            "node": "Decidir etapa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Decidir etapa": {
+      "main": [
+        [
+          {
+            "node": "Mover a etapa",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mover a etapa": {
+      "main": [
+        [
+          {
+            "node": "Cancelar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cancelar?": {
+      "main": [
+        [
+          {
+            "node": "Buscar lead",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Agendar?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Buscar lead": {
+      "main": [
+        [
+          {
+            "node": "Extraer Evento_id",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extraer Evento_id": {
+      "main": [
+        [
+          {
+            "node": "Cancelar evento",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cancelar evento": {
+      "main": [
+        [
+          {
+            "node": "Escribir cancelacion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agendar?": {
+      "main": [
+        [
+          {
+            "node": "FreeBusy",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Escribir respuesta normal",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "FreeBusy": {
+      "main": [
+        [
+          {
+            "node": "Libre?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Libre?": {
+      "main": [
+        [
+          {
+            "node": "Crear evento",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Escribir ocupado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crear evento": {
+      "main": [
+        [
+          {
+            "node": "Escribir confirmacion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Escribir confirmacion": {
+      "main": [
+        [
+          {
+            "node": "Mover a Reunion",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedup mensaje": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Escribir respuesta normal": {
+      "main": [
+        [
+          {
+            "node": "Lanzar Salesbot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mover a Reunion": {
+      "main": [
+        [
+          {
+            "node": "Lanzar Salesbot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Escribir ocupado": {
+      "main": [
+        [
+          {
+            "node": "Lanzar Salesbot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Escribir cancelacion": {
+      "main": [
+        [
+          {
+            "node": "Lanzar Salesbot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Preparar buffer": {
+      "main": [
+        [
+          {
+            "node": "Guardar buffer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Guardar buffer": {
+      "main": [
+        [
+          {
+            "node": "Esperar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Esperar": {
+      "main": [
+        [
+          {
+            "node": "Releer buffer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Releer buffer": {
+      "main": [
+        [
+          {
+            "node": "Ultimo mensaje?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ultimo mensaje?": {
+      "main": [
+        [
+          {
+            "node": "Limpiar buffer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Limpiar buffer": {
+      "main": [
+        [
+          {
+            "node": "Turnos libres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Turnos libres": {
+      "main": [
+        [
+          {
+            "node": "Calcular turnos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calcular turnos": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "instanceId": "3e16469ae74b627b5dd8de92060bc025f72be0c48234a3fe47ecabc71bb0cb34"
+  }
+}

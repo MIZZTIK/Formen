@@ -1,0 +1,9 @@
+# NUNCA versionar secretos
+*token*.txt
+*.key
+.env
+credenciales-reales*
+
+# temporales
+__pycache__/
+*.pyc
