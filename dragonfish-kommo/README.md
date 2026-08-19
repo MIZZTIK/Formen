@@ -1,21 +1,27 @@
 # Conector Dragonfish → Kommo · Formen
 
 Servicio on-premise que sincroniza **ventas de Dragonfish (Zoo Logic)** hacia **Kommo CRM**:
-por cada venta nueva busca el contacto en Kommo (por DNI/teléfono/email), lo crea o
-actualiza, y le agrega una **nota** con el detalle del comprobante.
+por cada venta nueva busca a qué contacto corresponde y le agrega una **nota** con el
+detalle del comprobante.
 
 > **Dirección:** Dragonfish → Kommo (solo lectura de Dragonfish, escritura en Kommo).
-> **Modelo:** actualizar contacto + nota (no crea leads).
+> **Modelo:** nota en el contacto (no crea contactos ni leads).
 
 ## Cómo funciona
 
 ```
-Dragonfish (API REST local)  ──polling──►  Conector (Node)  ──HTTPS/OAuth──►  Kommo (cloud)
-      comprobantes de venta                cursor + dedupe                   contacto + nota
+SQL Server local  ──polling──►  conector.ps1  ──HTTPS──►  Kommo (cloud)
+ DRAGONFISH_FORMEN              cursor + apareo temporal   nota en el contacto
 ```
 
-Dragonfish **no emite webhooks**, por eso el conector consulta (polling) el servicio REST
-local cada `POLL_INTERVAL_MS` y usa un cursor (`data/cursor.json`) para no reprocesar ventas.
+Dragonfish **no emite webhooks**, por eso el conector consulta la base cada N minutos y usa
+un cursor (`data/cursor.json`) para no reprocesar ventas.
+
+**La llave es el tiempo, no el dato.** La venta no identifica al comprador (ver el
+relevamiento más abajo): el teléfono lo junta el iPad del local con un formulario de Kommo,
+que el vendedor pasa *después* de cobrar. Por eso el apareo es: para cada venta, buscar los
+contactos creados por el usuario del iPad en los N minutos siguientes. **Uno solo → se
+asocia. Dos o más → no se adivina, queda sin asociar.**
 
 ## Requisitos
 
@@ -47,7 +53,7 @@ sin escribir nada. Cuando el mapeo esté validado, poné `DRY_RUN=false`.
    `npm run kommo:auth <CODE>`.
 5. Identificá los IDs de campos custom (DNI, etc.) y cargalos en `KOMMO_FIELD_ID_*`.
 
-## ⛔ PROYECTO FRENADO — relevamiento del 2026-08-19 en la PC de Formen
+## Relevamiento del 2026-08-19 en la PC de Formen (por qué el diseño es este)
 
 ### 1. El servicio REST de Dragonfish no está instalado
 
@@ -174,9 +180,19 @@ copy conector.config.example.json conector.config.json   # completar token
 
 Para que corra solo, Programador de tareas → tarea que ejecute
 `powershell -ExecutionPolicy Bypass -File <ruta>\conector.ps1 -Once`
-cada 10 minutos, con "Ejecutar tanto si el usuario inició sesión como si no".
-Es más robusto que dejar el loop abierto: si la PC se reinicia, la tarea vuelve
-sola.
+cada 10 minutos. Es más robusto que dejar el loop abierto: si la PC se
+reinicia, la tarea vuelve sola.
+
+```powershell
+schtasks /Create /TN "Formen - Conector Dragonfish a Kommo" /TR "powershell -ExecutionPolicy Bypass -File C:\FormenConector\conector.ps1 -Once" /SC MINUTE /MO 10 /F
+```
+
+> **Corre como el usuario logueado, a propósito.** Lo natural sería
+> "ejecutar aunque el usuario no haya iniciado sesión", pero hoy el script
+> entra a SQL con Integrated Security y `NT AUTHORITY\SYSTEM` no tiene
+> permiso sobre `DRAGONFISH_FORMEN`: fallaría en silencio cada 10 minutos.
+> Se cambia cuando exista el usuario SQL de solo lectura (ver pendientes).
+> Mientras tanto la PC del local queda logueada todo el día.
 
 ### El orden de puesta en marcha (importante)
 
@@ -197,12 +213,44 @@ compras quedaron en la ficha equivocada.
   corriendo con las credenciales de Windows de una persona.
 - **Integración privada propia en Kommo**, distinta de la del bot de n8n: si
   comparten token, al rotar uno se cae el otro.
-- **Validar la sintaxis del script**, que se escribió sin poder ejecutarlo:
-  ```powershell
-  $e=$null; [System.Management.Automation.Language.Parser]::ParseFile("$PWD\conector.ps1",[ref]$null,[ref]$e); $e
-  ```
 - **Zona horaria**: el apareo compara `created_at` de Kommo (epoch UTC) contra
-  la hora local de Dragonfish. Sale bien mientras la PC esté en hora argentina.
+  la hora local de Dragonfish. Verificado el 19/8: los horarios de los dos lados
+  coinciden con el horario del local. Se rompe si alguien cambia la zona de la PC.
+- **Falso positivo por uso mixto del iPad**: si el iPad se sigue usando también
+  para gente que solo entra a mirar, un interesado cargado justo después de la
+  venta de otro se lleva la nota equivocada. La regla de "dos candidatos → no
+  asocio" no cubre este caso, porque hay un solo candidato y es el que no es.
+  Se diluye cuando la carga al cobrar sea la mayoría de las cargas.
+- **`limit=250` sin paginar** en `Get-ContactosEnVentana`: irrelevante con
+  ventanas de 10 minutos, pero si alguien agranda `ventanaMin` mucho, trunca.
+
+## Estado al 19/08/2026 — desplegado, midiendo
+
+Instalado en **`C:\FormenConector\`** (fuera del perfil de usuario, para que la
+Tarea Programada lo vea), con la tarea cada 10 minutos y `"dryRun": true`.
+
+Verificado end to end ese día:
+
+- SQL responde y el cursor avanza (4 ventas leídas en una pasada de prueba).
+- Kommo responde **200, sin 401 ni 400** — la URL con corchetes
+  (`filter[created_at][from]`) pasa bien por `Invoke-RestMethod`.
+- El filtro por `created_by` del iPad devuelve lo que tiene que devolver.
+
+**Todavía no aparea nada, y está bien:** el cambio de proceso no ocurrió.
+Los 4 días previos al 19/8 muestran las dos poblaciones separadas —
+
+| iPad | ventas |
+|---|---|
+| — | 15/08 18:44 · 19:58 · 20:03 |
+| — | 18/08 10:13 · 11:11 |
+| 18/08 17:27 · 17:29 | — |
+| — | 18/08 19:17 · 19:46 |
+| 19/08 08:55 | — |
+
+Dos datos de escala que conviene tener a mano: son **~4 ventas por día**
+(7 en 4 días, con el 17/8 feriado), así que aun con apareo perfecto esto son
+unas 4 notas diarias; y el iPad se usa **menos que las ventas** (3 cargas
+contra 7 ventas). El cuello es el uso del iPad, no el software.
 
 ## Dejarlo como servicio en Windows
 
