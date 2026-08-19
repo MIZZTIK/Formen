@@ -15,7 +15,8 @@
 
   "match": {
     "ventanaMin": 10,
-    "esperaMin": 15
+    "esperaMin": 15,
+    "preferirContactoExistente": true
   },
 
   "tiposVenta": [2],

@@ -252,6 +252,63 @@ Dos datos de escala que conviene tener a mano: son **~4 ventas por día**
 unas 4 notas diarias; y el iPad se usa **menos que las ventas** (3 cargas
 contra 7 ventas). El cuello es el uso del iPad, no el software.
 
+### Qué carga realmente el iPad (auditado por API el 19/8)
+
+**No hay ningún formulario web de por medio.** Los 89 leads que crea el usuario
+FormenAR tienen `source_id` en `null`, sin nota de envío, y el campo de lead
+"Formulario" (`535306`, URL) vacío en todos. Un formulario web de Kommo deja
+rastro en los tres lugares. Lo que hay es **carga manual desde la app de Kommo**
+logueada como FormenAR.
+
+Se captura **nombre y teléfono, y nada más**: nunca email, nunca "Position", y
+el checkbox "Términos y condiciones" (`445074`) no se usó jamás. Tampoco hay
+*fuentes* configuradas en la cuenta, así que `created_by` sigue siendo el único
+marcador.
+
+Ojo con ese marcador: **`created_by 15483335` no es solo el iPad.** El 24/06 a
+las 03:53 entraron **192 contactos de una importación masiva** con el mismo
+usuario. Para el apareo es inofensivo (a esa hora no hay ventas), pero el
+marcador significa "el usuario FormenAR", no "el iPad".
+
+### 🔴 El teléfono se guarda en dos formatos y genera fichas duplicadas
+
+| origen | formato | casos |
+|---|---|---|
+| iPad | `3794801505` (10 dígitos pelados) | 65 de 69 |
+| WhatsApp y otros canales | `+5493794801505` | 2422 de 2547 |
+
+Kommo no los reconoce como la misma persona: **17 de las 69 cargas del iPad
+(25%) son un duplicado de un contacto que ya existe**. Sin corregirlo, la nota
+de la compra cae en el mellizo y la ficha donde vive toda la conversación no se
+entera de nada.
+
+El conector lo resuelve en `Resolve-ContactoDestino`: normaliza a los últimos 10
+dígitos, busca por `query=`, y si aparece **una sola** ficha con el mismo
+teléfono creada por otro usuario, escribe ahí.
+
+> **El criterio no es la antigüedad.** Lo intuitivo es "el viejo es el original",
+> y está mal: en los casos medidos el mellizo de WhatsApp suele ser **más nuevo**
+> (la persona se carga en el local y escribe entre 12 y 52 minutos después). Lo
+> que distingue a la ficha buena es **quién la creó** — la que vino por un canal
+> tiene la conversación, la del iPad es un nombre y un teléfono.
+
+Simulado sobre las 69 cargas reales: **17 redirigen, 50 se quedan en la ficha del
+iPad, 2 sin teléfono usable, 0 ambiguas.**
+
+Queda una limitación que no se puede tapar desde acá: si el mellizo de WhatsApp
+todavía no existe cuando el conector corre (aparece 52 minutos después y el
+conector mira a los 10), la nota queda en la ficha del iPad. Se arregla de raíz
+haciendo que el teléfono se cargue con `+549`, del lado de Kommo.
+
+### ⚠️ Los leads del iPad empezaron a caer en "Lead pausado" el 18/08
+
+86 leads seguidos entre julio y el 18/08 a la mañana fueron a "Primer contacto"
+(`108221247`). Los tres siguientes — 18/08 17:27, 18/08 17:29 y 19/08 08:55 —
+cayeron en **"Lead pausado"** (`108221251`), que es la etapa donde el bot de
+WhatsApp se queda mudo. Con tres casos no alcanza para afirmarlo, pero el corte
+es limpio y esa es justo la etapa de la autopausa que se corrigió en su momento
+en el workflow de n8n. **Sin diagnosticar.**
+
 ## Dejarlo como servicio en Windows
 
 Opción simple con [NSSM](https://nssm.cc/): `nssm install FormenDFKommo "C:\Program Files\nodejs\node.exe" "C:\EspacioDeTrabajo\Formen\dragonfish-kommo\src\index.js"`.

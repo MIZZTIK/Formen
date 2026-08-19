@@ -161,6 +161,65 @@ function Get-ContactosEnVentana {
   return @($cs | Where-Object { $_.created_by -eq $Cfg.kommo.ipadUserId })
 }
 
+function Get-TelefonoContacto {
+  param($Contacto)
+  foreach ($f in @($Contacto.custom_fields_values)) {
+    if ($f.field_code -eq 'PHONE' -or $f.field_name -eq 'Phone') {
+      return "$($f.values[0].value)"
+    }
+  }
+  return $null
+}
+
+# "3794801505" y "+5493794801505" son la misma persona. Los dejamos en los
+# ultimos 10 digitos, sin el 54/549 de Argentina.
+function ConvertTo-TelefonoNormalizado {
+  param([string]$Telefono)
+  $d = [regex]::Replace("$Telefono", '\D', '')
+  if ($d.StartsWith('549')) { $d = $d.Substring(3) }
+  elseif ($d.StartsWith('54')) { $d = $d.Substring(2) }
+  if ($d.Length -ge 10) { return $d.Substring($d.Length - 10) }
+  return $d
+}
+
+# El iPad graba el telefono en 10 digitos pelados; WhatsApp lo graba con +549.
+# Kommo no los reconoce como la misma persona: 17 de las 69 cargas del iPad
+# (25%, medido el 19/8/2026) son un duplicado de un contacto que ya existia.
+# Si le pegamos la nota al duplicado, la ficha donde esta toda la conversacion
+# de esa persona no se entera de que compro.
+#
+# El criterio NO es la antiguedad: en la mayoria de los casos medidos el mellizo
+# de WhatsApp es mas NUEVO (la persona se carga en el local y escribe al rato,
+# 12 a 52 min despues). Lo que distingue a la ficha buena es quien la creo: la
+# que vino por un canal tiene la conversacion, la del iPad es solo un nombre y
+# un telefono. Si hay mas de una candidata, no elegimos.
+function Resolve-ContactoDestino {
+  param($Cfg, $Contacto)
+
+  if (-not $Cfg.match.preferirContactoExistente) { return $Contacto }
+  $norm = ConvertTo-TelefonoNormalizado (Get-TelefonoContacto $Contacto)
+  if ($norm.Length -lt 8) { return $Contacto }
+
+  $r = Invoke-Kommo -Cfg $Cfg -Metodo 'GET' -Ruta "/api/v4/contacts?query=$norm&limit=50"
+  if (-not $r) { return $Contacto }
+
+  $mellizos = @(@($r._embedded.contacts) | Where-Object {
+      $_.id -ne $Contacto.id -and
+      $_.created_by -ne $Cfg.kommo.ipadUserId -and
+      (ConvertTo-TelefonoNormalizado (Get-TelefonoContacto $_)) -eq $norm
+    })
+
+  if ($mellizos.Count -eq 0) { return $Contacto }
+  if ($mellizos.Count -gt 1) {
+    Write-Log 'warn' ("Contacto $($Contacto.id): $($mellizos.Count) fichas con el mismo telefono -> se deja la del iPad.")
+    return $Contacto
+  }
+
+  $orig = $mellizos[0]
+  Write-Log 'info' "Contacto $($Contacto.id) es duplicado del iPad -> la nota va a la ficha $($orig.id)."
+  return $orig
+}
+
 function Add-NotaKommo {
   param($Cfg, [int64]$ContactoId, [string]$Texto)
   $cuerpo = @(@{ entity_id = $ContactoId; note_type = 'common'; params = @{ text = $Texto } })
@@ -302,14 +361,16 @@ function Invoke-Pasada {
         $c = $cand[0]
         $creado = [DateTimeOffset]::FromUnixTimeSeconds($c.created_at).LocalDateTime
         $min = [math]::Round(($creado - $venta.Ts).TotalMinutes)
+        $destino = Resolve-ContactoDestino -Cfg $Cfg -Contacto $c
         if ($Cfg.dryRun) {
-          Write-Log 'info' "[DRY_RUN] $($venta.Comprobante) -> contacto $($c.id) (+$min min)"
+          Write-Log 'info' "[DRY_RUN] $($venta.Comprobante) -> contacto $($destino.id) (+$min min)"
         } else {
-          [void](Add-NotaKommo -Cfg $Cfg -ContactoId $c.id -Texto (New-TextoNota -Venta $venta -Minutos $min))
-          Write-Log 'info' "$($venta.Comprobante) -> nota en contacto $($c.id) (+$min min)"
+          [void](Add-NotaKommo -Cfg $Cfg -ContactoId $destino.id -Texto (New-TextoNota -Venta $venta -Minutos $min))
+          Write-Log 'info' "$($venta.Comprobante) -> nota en contacto $($destino.id) (+$min min)"
         }
         $stats.asociadas++
-        Add-Registro -Resultado 'asociada' -Venta $venta -Candidatos $cand -Extra @{ minutos = $min }
+        Add-Registro -Resultado 'asociada' -Venta $venta -Candidatos $cand `
+          -Extra @{ minutos = $min; contacto_destino = $destino.id; era_duplicado = ($destino.id -ne $c.id) }
       }
 
       # Asociada o no, queda procesada: si el contacto no aparecio en la
