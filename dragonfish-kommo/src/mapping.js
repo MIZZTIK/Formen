@@ -1,74 +1,57 @@
 'use strict';
 
-// Traduce una venta normalizada de Dragonfish a la forma que espera Kommo:
-// el objeto de contacto (para crear/actualizar) y el texto de la nota.
+// Traduce una venta de Dragonfish al texto de la nota que se pega en el
+// contacto de Kommo.
+//
+// ⚠️ SIN EMOJIS. La base de Kommo es MySQL utf8 de 3 bytes: cualquier emoji
+// trunca el campo en ese punto y la nota llega cortada a la mitad. Es el
+// gotcha número uno de este cliente.
 
-const { config } = require('./config');
+const MONEDA = new Intl.NumberFormat('es-AR', {
+  style: 'currency',
+  currency: 'ARS',
+  maximumFractionDigits: 0,
+});
 
-// Normaliza un teléfono AR a solo dígitos para mejorar el match en Kommo.
+// Normaliza un teléfono AR a solo dígitos.
 function normPhone(v) {
   return v ? String(v).replace(/\D/g, '') : '';
 }
 
-// Construye custom_fields_values de Kommo solo con los campos configurados.
-function customFields({ documento, telefono, email }) {
-  const cf = [];
-  if (config.kommo.fieldIdDni && documento) {
-    cf.push({ field_id: Number(config.kommo.fieldIdDni), values: [{ value: String(documento) }] });
+function fmtFecha(d) {
+  if (!d) return 's/d';
+  const dt = d instanceof Date ? d : new Date(d);
+  if (Number.isNaN(dt.getTime())) return String(d);
+  return dt.toLocaleString('es-AR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
+// Nota que ve el vendedor en la ficha del contacto.
+function toNoteText(venta, { minutos } = {}) {
+  const total = venta.total != null ? MONEDA.format(venta.total) : 's/d';
+  const lineas = [
+    'Compra en el local',
+    `Comprobante: ${venta.comprobante}`,
+    `Fecha: ${fmtFecha(venta.ts)}`,
+    `Total: ${total}`,
+  ];
+  if (minutos != null) {
+    lineas.push(
+      `(asociado automaticamente: el contacto se cargo ${minutos} min despues de la venta)`
+    );
   }
-  if (config.kommo.fieldIdTelefono && telefono) {
-    cf.push({
-      field_id: Number(config.kommo.fieldIdTelefono),
-      values: [{ value: String(telefono) }],
-    });
-  }
-  if (config.kommo.fieldIdEmail && email) {
-    cf.push({ field_id: Number(config.kommo.fieldIdEmail), values: [{ value: String(email) }] });
-  }
-  return cf;
+  return quitarEmojis(lineas.join('\n'));
 }
 
-// Datos de cliente: preferimos los del comprobante y completamos con la ficha.
-function mergeCliente(venta, ficha) {
-  return {
-    nombre: venta.cliente.nombre || ficha?.nombre || 'Cliente sin nombre',
-    documento: venta.cliente.documento || ficha?.documento || null,
-    telefono: venta.cliente.telefono || ficha?.telefono || null,
-    email: venta.cliente.email || ficha?.email || null,
-  };
+// Red de seguridad: saca todo lo que esté fuera del plano básico (4 bytes en
+// utf8), que es lo que Kommo no aguanta.
+function quitarEmojis(s) {
+  return String(s).replace(/[\u{10000}-\u{10FFFF}]/gu, '');
 }
 
-function toKommoContact(cli) {
-  const contact = { name: cli.nombre };
-  const cf = customFields(cli);
-  if (cf.length) contact.custom_fields_values = cf;
-  return contact;
-}
-
-function toIdentifiers(cli) {
-  return {
-    dni: cli.documento ? String(cli.documento) : null,
-    telefono: cli.telefono ? normPhone(cli.telefono) : null,
-    email: cli.email || null,
-  };
-}
-
-function toNoteText(venta, cli) {
-  const money =
-    venta.total != null
-      ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(
-          Number(venta.total)
-        )
-      : 's/d';
-  return [
-    `🛒 Venta registrada en Dragonfish`,
-    `Comprobante: ${venta.tipo} ${venta.numero ?? 'S/N'}`,
-    `Fecha: ${venta.fecha ?? 's/d'}`,
-    `Total: ${money}`,
-    cli.documento ? `Doc: ${cli.documento}` : null,
-  ]
-    .filter(Boolean)
-    .join('\n');
-}
-
-module.exports = { mergeCliente, toKommoContact, toIdentifiers, toNoteText, normPhone };
+module.exports = { toNoteText, normPhone, quitarEmojis, fmtFecha };

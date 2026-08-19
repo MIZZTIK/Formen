@@ -16,10 +16,16 @@ class KommoClient {
   constructor() {
     this.base = config.kommo.baseUrl;
     this.tokens = tokenStore.load();
+    // Token de larga duración de una integración privada: no vence ni se
+    // refresca, se usa tal cual. Es el camino que usa el conector en Formen.
+    if (!this.tokens.access_token && config.kommo.accessToken) {
+      this.tokens = { access_token: config.kommo.accessToken, longLived: true };
+    }
   }
 
   // ── Auth ───────────────────────────────────────────────────
   async _refreshIfNeeded() {
+    if (this.tokens.longLived) return;
     if (this.tokens.access_token && Date.now() < (this.tokens.expires_at || 0)) return;
     if (!this.tokens.refresh_token) {
       throw new Error(
@@ -80,6 +86,30 @@ class KommoClient {
       if (c) return c;
     }
     return null;
+  }
+
+  // Contactos creados en una ventana de tiempo, opcionalmente filtrados por el
+  // usuario que los creó (el iPad del local está logueado como un usuario fijo).
+  // `desde`/`hasta` son Date; Kommo filtra por created_at en segundos epoch.
+  //
+  // OJO zona horaria: created_at es epoch (UTC) y los timestamps de Dragonfish
+  // son hora local. La conversión sale bien mientras el conector corra en una
+  // máquina con la misma zona horaria que el local (AR, UTC-3).
+  async findContactsCreatedBetween(desde, hasta, createdBy = null) {
+    const from = Math.floor(desde.getTime() / 1000);
+    const to = Math.ceil(hasta.getTime() / 1000);
+    const qs = new URLSearchParams({
+      'filter[created_at][from]': String(from),
+      'filter[created_at][to]': String(to),
+      limit: '250',
+    });
+    const data = await this._req('GET', `/api/v4/contacts?${qs}`);
+    const contactos = data?._embedded?.contacts || [];
+    // El filtro por created_by no siempre se respeta según la versión de la API,
+    // así que además filtramos acá.
+    return createdBy == null
+      ? contactos
+      : contactos.filter((c) => c.created_by === createdBy);
   }
 
   async createContact(contact) {

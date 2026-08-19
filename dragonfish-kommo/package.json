@@ -10,9 +10,11 @@
   "scripts": {
     "start": "node src/index.js",
     "once": "node src/index.js --once",
+    "medir": "node src/index.js --medir",
     "kommo:auth": "node scripts/kommo-auth.js"
   },
   "dependencies": {
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "mssql": "^11.0.1"
   }
 }
