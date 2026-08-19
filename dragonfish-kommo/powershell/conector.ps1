@@ -1,4 +1,4 @@
-# ─────────────────────────────────────────────────────────────────────────────
+﻿# ─────────────────────────────────────────────────────────────────────────────
 #  Conector Dragonfish -> Kommo  ·  Formen
 #
 #  Corre EN LA PC DEL LOCAL, sin instalar nada: usa el SqlClient de .NET (ya
@@ -47,7 +47,7 @@ function Write-Log {
 
 function Get-Config {
   if (-not (Test-Path $ConfigPath)) {
-    throw "Falta $ConfigPath. Copiá conector.config.example.json y completalo."
+    throw "Falta $ConfigPath. Copiar conector.config.example.json y completarlo."
   }
   $c = Get-Content $ConfigPath -Raw -Encoding utf8 | ConvertFrom-Json
   if (-not $c.kommo.token) { throw "Falta el token de Kommo en $ConfigPath" }
