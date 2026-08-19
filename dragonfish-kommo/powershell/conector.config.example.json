@@ -1,0 +1,24 @@
+{
+  "sql": {
+    "server": "localhost\\ZOOLOGIC",
+    "database": "DRAGONFISH_FORMEN",
+    "schema": "ZooLogic",
+    "user": "",
+    "password": ""
+  },
+
+  "kommo": {
+    "subdominio": "adminformenar",
+    "token": "",
+    "ipadUserId": 15483335
+  },
+
+  "match": {
+    "ventanaMin": 10,
+    "esperaMin": 15
+  },
+
+  "tiposVenta": [2],
+  "dryRun": true,
+  "intervaloSeg": 300
+}

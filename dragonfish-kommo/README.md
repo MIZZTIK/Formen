@@ -154,6 +154,56 @@ src/
 scripts/kommo-auth.js  intercambia authorization_code por tokens
 ```
 
+## ⭐ Cómo se despliega de verdad: `powershell/conector.ps1`
+
+**En la PC del local NO hay Node** (verificado el 19/8/2026), y es la máquina de
+facturación de un negocio sin nadie que la administre: instalarle un runtime y
+decenas de paquetes npm es peor negocio que evitarlo. Por eso el conector que se
+despliega es el de PowerShell, que **no necesita instalar nada**: usa el
+`SqlClient` de .NET (ya viene con Windows) y la API REST de Kommo.
+
+La versión Node (`src/`) queda como referencia del diseño y para el día que esto
+corra en un servidor de verdad. **La que se usa es la de `powershell/`.**
+
+```powershell
+cd powershell
+copy conector.config.example.json conector.config.json   # completar token
+.\conector.ps1 -Once      # una pasada de prueba (dryRun=true: no escribe en Kommo)
+.\conector.ps1 -Medir     # reporte de la tasa de apareo
+```
+
+Para que corra solo, Programador de tareas → tarea que ejecute
+`powershell -ExecutionPolicy Bypass -File <ruta>\conector.ps1 -Once`
+cada 10 minutos, con "Ejecutar tanto si el usuario inició sesión como si no".
+Es más robusto que dejar el loop abierto: si la PC se reinicia, la tarea vuelve
+sola.
+
+### El orden de puesta en marcha (importante)
+
+1. Agustín cambia el proceso: **el iPad se pasa al cobrar**, lo más pegado
+   posible al cobro.
+2. El conector corre con `"dryRun": true`. **No toca Kommo**, solo mide.
+3. A las dos semanas, `.\conector.ps1 -Medir` da la tasa real de asociación.
+4. Recién con una tasa buena se pone `"dryRun": false`.
+
+Saltearse el paso 2 es cómo se descubre a los tres meses que media docena de
+compras quedaron en la ficha equivocada.
+
+### Pendientes antes de producción
+
+- **Usuario SQL de solo lectura** para el conector (pedírselo al soporte de Zoo
+  Logic). Requiere SQL Server en modo de autenticación mixta. Mientras tanto el
+  script cae en Integrated Security, que sirve para probar pero no para dejarlo
+  corriendo con las credenciales de Windows de una persona.
+- **Integración privada propia en Kommo**, distinta de la del bot de n8n: si
+  comparten token, al rotar uno se cae el otro.
+- **Validar la sintaxis del script**, que se escribió sin poder ejecutarlo:
+  ```powershell
+  $e=$null; [System.Management.Automation.Language.Parser]::ParseFile("$PWD\conector.ps1",[ref]$null,[ref]$e); $e
+  ```
+- **Zona horaria**: el apareo compara `created_at` de Kommo (epoch UTC) contra
+  la hora local de Dragonfish. Sale bien mientras la PC esté en hora argentina.
+
 ## Dejarlo como servicio en Windows
 
 Opción simple con [NSSM](https://nssm.cc/): `nssm install FormenDFKommo "C:\Program Files\nodejs\node.exe" "C:\EspacioDeTrabajo\Formen\dragonfish-kommo\src\index.js"`.

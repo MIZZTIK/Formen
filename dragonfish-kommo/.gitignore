@@ -4,3 +4,5 @@ data/*.json
 !data/.gitkeep
 *.log
 logs/
+powershell/conector.config.json
+powershell/data/
