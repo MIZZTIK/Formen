@@ -20,6 +20,12 @@
     "etiqueta": "local"
   },
 
+  "avisos": {
+    "telegramToken": "",
+    "telegramChatId": "",
+    "fallosSeguidosParaAvisar": 3
+  },
+
   "tiposVenta": [2],
   "dryRun": true,
   "intervaloSeg": 300

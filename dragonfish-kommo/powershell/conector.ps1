@@ -260,7 +260,14 @@ function New-TextoNota {
 
 function Get-Cursor {
   if (Test-Path $CursorFile) {
-    return Get-Content $CursorFile -Raw -Encoding utf8 | ConvertFrom-Json
+    try {
+      return Get-Content $CursorFile -Raw -Encoding utf8 | ConvertFrom-Json
+    } catch {
+      # Cursor cortado a la mitad (corte de luz durante la escritura). Volver al
+      # comienzo del dia significa REPROCESAR las ventas de hoy y duplicar notas,
+      # asi que tiene que quedar gritado en el log.
+      Write-Log 'error' "cursor.json ilegible ($($_.Exception.Message)). Se reinicia desde hoy 00:00: puede duplicar notas del dia."
+    }
   }
   # Primer arranque: desde el comienzo del dia, para no arrastrar anios de historia.
   return [pscustomobject]@{
@@ -276,7 +283,73 @@ function Save-Cursor {
   if ($Cursor.processedIds.Count -gt 500) {
     $Cursor.processedIds = @($Cursor.processedIds | Select-Object -Last 500)
   }
-  $Cursor | ConvertTo-Json -Depth 4 | Out-File $CursorFile -Encoding utf8
+  # Escritura atomica: primero a un temporal, despues reemplazo. Si se corta la
+  # luz en el medio queda el archivo viejo entero, nunca uno cortado por la
+  # mitad. Sin esto, un corte a destiempo hace reprocesar el dia y duplicar
+  # las notas en las fichas.
+  $tmp = "$CursorFile.tmp"
+  $Cursor | ConvertTo-Json -Depth 4 | Out-File $tmp -Encoding utf8
+  Move-Item -Path $tmp -Destination $CursorFile -Force
+}
+
+# ── Vigilancia: que grite si se cae ──────────────────────────────────────────
+#
+# Esto corre solo en la PC del local, sin nadie que lo mire. Si vence el token,
+# si SQL deja de responder o si alguien cierra sesion, el log acumula errores en
+# una carpeta que nadie abre. Avisamos por Telegram.
+#
+# Reglas anti-ruido: avisa recien despues de N pasadas fallidas seguidas, no
+# repite hasta que se recupere, y avisa tambien la recuperacion.
+#
+# SOLO ENVIA. Nunca getUpdates ni setWebhook: el mismo token lo usa otro bot
+# haciendo polling y se romperia en silencio.
+function Send-Telegram {
+  param($Cfg, [string]$Texto)
+  if (-not $Cfg.avisos.telegramToken -or -not $Cfg.avisos.telegramChatId) { return }
+  try {
+    $url = "https://api.telegram.org/bot$($Cfg.avisos.telegramToken)/sendMessage"
+    $body = @{ chat_id = "$($Cfg.avisos.telegramChatId)"; text = $Texto } | ConvertTo-Json -Compress
+    [void](Invoke-RestMethod -Uri $url -Method POST -Body $body `
+        -ContentType 'application/json; charset=utf-8' -TimeoutSec 15)
+  } catch {
+    # Un aviso que falla no puede tumbar la pasada.
+    Write-Log 'warn' "No se pudo avisar por Telegram: $($_.Exception.Message)"
+  }
+}
+
+function Invoke-PasadaVigilada {
+  param($Cfg)
+
+  $EstadoFile = Join-Path $DataDir 'estado.json'
+  $st = if (Test-Path $EstadoFile) {
+    try { Get-Content $EstadoFile -Raw -Encoding utf8 | ConvertFrom-Json } catch { $null }
+  } else { $null }
+  if (-not $st) { $st = [pscustomobject]@{ fallosSeguidos = 0; avisado = $false } }
+
+  $umbral = if ($Cfg.avisos.fallosSeguidosParaAvisar) { [int]$Cfg.avisos.fallosSeguidosParaAvisar } else { 3 }
+  $maquina = "$env:COMPUTERNAME"
+
+  try {
+    Invoke-Pasada -Cfg $Cfg
+    if ($st.avisado) {
+      Send-Telegram -Cfg $Cfg -Texto "Formen: el conector Dragonfish-Kommo volvio a funcionar ($maquina)."
+      Write-Log 'info' 'Recuperado: se aviso por Telegram.'
+    }
+    $st.fallosSeguidos = 0
+    $st.avisado = $false
+  } catch {
+    $st.fallosSeguidos = [int]$st.fallosSeguidos + 1
+    Write-Log 'error' "Pasada fallida ($($st.fallosSeguidos) seguidas): $($_.Exception.Message)"
+    if ($st.fallosSeguidos -ge $umbral -and -not $st.avisado) {
+      Send-Telegram -Cfg $Cfg -Texto ("Formen: el conector Dragonfish-Kommo esta fallando en $maquina. " +
+        "$($st.fallosSeguidos) pasadas seguidas con error. Las compras del local dejaron de aparecer en las fichas. " +
+        "Ultimo error: $($_.Exception.Message)")
+      $st.avisado = $true
+    }
+  }
+
+  New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+  $st | ConvertTo-Json -Depth 3 | Out-File $EstadoFile -Encoding utf8
 }
 
 function Add-Registro {
@@ -419,15 +492,11 @@ $cfg = Get-Config
 Write-Log 'info' "Conector iniciado. dryRun=$($cfg.dryRun)"
 
 if ($Once) {
-  Invoke-Pasada -Cfg $cfg
+  Invoke-PasadaVigilada -Cfg $cfg
   return
 }
 
 while ($true) {
-  try {
-    Invoke-Pasada -Cfg $cfg
-  } catch {
-    Write-Log 'error' "Pasada fallida: $($_.Exception.Message)"
-  }
+  Invoke-PasadaVigilada -Cfg $cfg
   Start-Sleep -Seconds $cfg.intervaloSeg
 }

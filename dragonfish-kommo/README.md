@@ -219,6 +219,46 @@ mirar `data\conector.log` y las notas que aparecen en Kommo.
 Para apagarlo: `"dryRun": true` de vuelta. Las notas ya escritas quedan y se
 borran a mano.
 
+### Vigilancia: qué pasa si se apaga la máquina
+
+Corre solo en una PC de local sin nadie que la administre, así que las fallas
+tienen que gritar.
+
+**Si la máquina se apaga, no se pierde ninguna venta.** El cursor guarda hasta
+dónde se procesó y al volver se pone al día, aunque hayan pasado días: como los
+contactos se buscan en Kommo por ventana de `created_at`, el apareo sale igual
+de bien en retrospectiva. Tres salvedades:
+
+1. Mientras está apagada no pasa nada, obviamente.
+2. **Si nadie inicia sesión en Windows, la tarea no corre** (ver más arriba por
+   qué no puede correr como SYSTEM). Se arregla con el usuario SQL propio.
+3. Un corte de luz **durante la escritura del cursor** dejaba el archivo cortado
+   por la mitad; al arrancar volvía al principio del día y **reprocesaba ventas
+   ya anotadas, duplicando notas en las fichas**. Resuelto: `Save-Cursor`
+   escribe a un temporal y recién después reemplaza (`Move-Item -Force`). Si
+   aun así el cursor queda ilegible, `Get-Cursor` lo deja escrito en el log
+   como error, no en silencio.
+
+Hardening de la Tarea Programada (que corra apenas puede si se perdió una
+ejecución por estar apagada):
+
+```powershell
+$n = "Formen - Conector Dragonfish a Kommo"
+Set-ScheduledTask -TaskName $n -Settings (New-ScheduledTaskSettingsSet `
+  -StartWhenAvailable -MultipleInstances IgnoreNew `
+  -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries `
+  -ExecutionTimeLimit (New-TimeSpan -Minutes 30))
+```
+
+**Aviso por Telegram.** `Invoke-PasadaVigilada` lleva la cuenta en
+`data\estado.json` y avisa después de N pasadas fallidas seguidas (`avisos.
+fallosSeguidosParaAvisar`, por defecto 3), **no repite** hasta que se recupere,
+y avisa también la recuperación. El token va en `conector.config.json`, que está
+en `.gitignore`. Se configura con `set-telegram.ps1` (tampoco versionado).
+
+> El bot **solo envía**. Nunca `getUpdates` ni `setWebhook`: el mismo token lo
+> usa otro bot haciendo polling y se rompería en silencio.
+
 ### Pendientes antes de producción
 
 - **Usuario SQL de solo lectura** para el conector (pedírselo al soporte de Zoo

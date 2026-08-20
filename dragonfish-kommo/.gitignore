@@ -6,3 +6,4 @@ data/*.json
 logs/
 powershell/conector.config.json
 powershell/data/
+powershell/set-telegram.ps1
