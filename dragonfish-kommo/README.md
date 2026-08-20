@@ -312,7 +312,7 @@ Dos datos de escala que conviene tener a mano: son **~4 ventas por día**
 unas 4 notas diarias; y el iPad se usa **menos que las ventas** (3 cargas
 contra 7 ventas). El cuello es el uso del iPad, no el software.
 
-### 🔴 CORRECCIÓN del 20/8: `created_by 15483335` NO marca el mostrador
+### 🔴 CORRECCIÓN del 20/8: `created_by 15483335` es el aviso de "prenda lista"
 
 Todo lo que sigue en esta sección se escribió creyendo que los contactos creados
 por el usuario FormenAR (`15483335`) eran las cargas del iPad. **Casi seguro que
@@ -325,28 +325,41 @@ no lo son.** Al revisar cuatro de ellos el 20/8:
 | Todos | lead en "Lead pausado" **con conversación de chat** |
 | Sergio Kunzi | **dos leads creados con 2 minutos de diferencia** |
 
-Eso no es alguien tipeando en un iPad. La hipótesis es que ese `created_by`
-marca **lo que entra por la sesión de WhatsApp Lite**, conectada con el usuario
-FormenAR. Encaja con tres cosas que se habían leído mal:
+Se revisaron dos de esas fichas en la interfaz (leads `19804915` y `19815643`) y
+la secuencia es siempre la misma:
 
-- el teléfono en 10 dígitos pelados sería el formato de esa integración, no un
-  humano apurado;
-- los "17 duplicados iPad vs WhatsApp" serían **WhatsApp Lite vs el otro canal
-  de WhatsApp**: la misma persona entrando por dos puertas;
-- los tres "Lead pausado" del 18/8 dejan de ser un misterio.
+```
+17:35  FormenAR   El valor del campo «Teléfono» se establece en «3794655853»
+17:36  FormenAR   "¡Buenas! Me comunico de Formen para informarle que su ambo
+                   ya se encuentra listo para retirar. ¡Lo esperamos!"  Entregado
+17:36  SalesBot (Detener bot)  Nuevo estatus: Lead pausado <- de Primer contacto
+17:40  Lucas Godoy  "Voy enseguida. Hasta que hora tienen abierto?"
+```
 
-Si se confirma, **las "69 cargas del iPad" medidas el 19/8 nunca fueron cargas
-del iPad**, y los números de esta sección hay que leerlos con esa advertencia.
+Son **cargas manuales del personal, de otro proceso: avisar que el ambo está
+listo para retirar.** No son capturas de comprador en el mostrador.
+
+Eso explica de una todo lo que se venía arrastrando:
+
+- el teléfono en 10 dígitos pelados lo tipea una persona, tal cual;
+- **el misterio de "Lead pausado" queda resuelto y no es un bug**: lo hace un
+  Salesbot llamado "Detener bot" cuando el personal manda un mensaje manual,
+  para que el bot no le hable encima al operador. Por diseño. Lo que cambió el
+  18/8 fue que empezaron a usar este flujo, no el workflow de n8n;
+- nunca coincidían con las ventas porque a esta gente se la carga **cuando la
+  prenda está lista, días después de haber comprado**.
+
+**Las "69 cargas del iPad" medidas el 19/8 nunca fueron cargas del iPad**, y los
+números de esta sección hay que leerlos con esa advertencia.
 
 **Consecuencia operativa, ya aplicada:** con la escritura prendida ese marcador
-es peligroso — alguien que escribe por WhatsApp cinco minutos después de que
-*otro* cliente pagó cumple la regla de "un solo candidato" y se lleva la compra
-ajena. Se desactivó poniendo **`kommo.ipadUserId = -1`** en la config del local:
-`Test-ContactoDelLocal` queda reconociendo **solo la etiqueta del formulario**.
-No cuesta nada, porque el matcheo estaba en 0 de 6.
-
-> Pendiente: confirmar abriendo una de esas fichas en Kommo y viendo si adentro
-> hay conversación de WhatsApp. Hasta entonces esto es hipótesis, no hecho.
+es peligroso, y por una razón más fuerte que "es confuso" — marca **una
+población distinta y activa**. A esa gente le avisan que su prenda está lista,
+contesta "voy enseguida" y **puede aparecer a pagar veinte minutos después**.
+Con el marcador viejo, esa venta se le pegaba a quien recibió el aviso, aunque
+el que pagó fuese otro. Se desactivó poniendo **`kommo.ipadUserId = -1`** en la
+config del local: `Test-ContactoDelLocal` reconoce **solo la etiqueta del
+formulario**. No cuesta nada, porque el matcheo estaba en 0 de 6.
 
 ### Qué carga el iPad (auditado por API el 19/8, ver corrección arriba)
 
@@ -441,14 +454,15 @@ conector mira a los 10), la nota queda en la ficha del local.
 > tipear el `9` adelante — frágil, no vale la pena pedirlo. Limpiar los
 > duplicados que ya existen en la base es un trabajo aparte, de higiene de CRM.
 
-### ⚠️ Los leads del iPad empezaron a caer en "Lead pausado" el 18/08
+### ~~Los leads del iPad empezaron a caer en "Lead pausado" el 18/08~~ — resuelto
 
-86 leads seguidos entre julio y el 18/08 a la mañana fueron a "Primer contacto"
-(`108221247`). Los tres siguientes — 18/08 17:27, 18/08 17:29 y 19/08 08:55 —
-cayeron en **"Lead pausado"** (`108221251`), que es la etapa donde el bot de
-WhatsApp se queda mudo. Con tres casos no alcanza para afirmarlo, pero el corte
-es limpio y esa es justo la etapa de la autopausa que se corrigió en su momento
-en el workflow de n8n. **Sin diagnosticar.**
+Se había anotado como posible regresión del workflow de n8n: 86 leads seguidos a
+"Primer contacto" y de golpe, el 18/08, tres a "Lead pausado".
+
+**No es un bug.** Lo hace un Salesbot de Kommo llamado **"Detener bot"** cuando
+el personal manda un mensaje manual desde la ficha, para que el bot no le hable
+encima al operador. Lo que cambió el 18/08 fue que empezaron a usar el flujo de
+"tu prenda está lista", no el workflow.
 
 ## Dejarlo como servicio en Windows
 
