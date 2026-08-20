@@ -146,7 +146,25 @@ function Invoke-Kommo {
   }
 }
 
-# Contactos creados entre dos momentos, filtrando por el usuario del iPad.
+# ¿Este contacto se cargo en el mostrador?
+#
+# Dos formas, y las dos tienen que seguir valiendo durante la transicion:
+#   - Etiqueta (hoy "local"): la pone el formulario web. Es la buena, esta
+#     puesta a proposito. El formulario crea los contactos con created_by = 0,
+#     asi que sin esto el conector se queda ciego el dia que empiecen a usarlo.
+#   - created_by del usuario FormenAR: como se cargaba antes, a mano desde la
+#     app. Se puede sacar cuando ya nadie cargue asi.
+function Test-ContactoDelLocal {
+  param($Cfg, $Contacto)
+  if ($Cfg.match.etiqueta) {
+    foreach ($t in @($Contacto._embedded.tags)) {
+      if ($t.name -eq $Cfg.match.etiqueta) { return $true }
+    }
+  }
+  return ($Contacto.created_by -eq $Cfg.kommo.ipadUserId)
+}
+
+# Contactos cargados en el mostrador entre dos momentos.
 function Get-ContactosEnVentana {
   param($Cfg, [datetime]$Desde, [datetime]$Hasta)
 
@@ -156,9 +174,8 @@ function Get-ContactosEnVentana {
   $r = Invoke-Kommo -Cfg $Cfg -Metodo 'GET' -Ruta $ruta
   if (-not $r) { return @() }
 
-  $cs = @($r._embedded.contacts)
-  # El filtro por created_by de la API no siempre se respeta: filtramos aca.
-  return @($cs | Where-Object { $_.created_by -eq $Cfg.kommo.ipadUserId })
+  # La consulta ya devuelve _embedded.tags, no hace falta pedir cada contacto.
+  return @(@($r._embedded.contacts) | Where-Object { Test-ContactoDelLocal -Cfg $Cfg -Contacto $_ })
 }
 
 function Get-TelefonoContacto {
@@ -205,7 +222,7 @@ function Resolve-ContactoDestino {
 
   $mellizos = @(@($r._embedded.contacts) | Where-Object {
       $_.id -ne $Contacto.id -and
-      $_.created_by -ne $Cfg.kommo.ipadUserId -and
+      -not (Test-ContactoDelLocal -Cfg $Cfg -Contacto $_) -and
       (ConvertTo-TelefonoNormalizado (Get-TelefonoContacto $_)) -eq $norm
     })
 

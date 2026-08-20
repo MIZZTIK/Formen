@@ -252,13 +252,45 @@ Dos datos de escala que conviene tener a mano: son **~4 ventas por día**
 unas 4 notas diarias; y el iPad se usa **menos que las ventas** (3 cargas
 contra 7 ventas). El cuello es el uso del iPad, no el software.
 
-### Qué carga realmente el iPad (auditado por API el 19/8)
+### Qué carga el iPad (auditado por API el 19/8)
 
-**No hay ningún formulario web de por medio.** Los 89 leads que crea el usuario
-FormenAR tienen `source_id` en `null`, sin nota de envío, y el campo de lead
-"Formulario" (`535306`, URL) vacío en todos. Un formulario web de Kommo deja
-rastro en los tres lugares. Lo que hay es **carga manual desde la app de Kommo**
-logueada como FormenAR.
+Hasta el 19/8/2026 **no había ningún formulario de por medio**: los 89 leads del
+usuario FormenAR tienen `source_id` en `null`, sin nota de envío y con el campo
+de lead "Formulario" (`535306`) vacío. Era **carga manual desde la app de Kommo**
+logueada como FormenAR. El formulario web existía —hasta con una etapa propia
+"Formulario" (`108223331`) en el embudo— pero **nunca se había usado ni una vez**.
+
+Ese mismo día se lo configuró y se lo puso en marcha:
+
+| | |
+|---|---|
+| Link | `https://forms.kommo.com/rzrcvzw` (formulario `1716275`) |
+| Campos obligatorios | Nombre completo, Teléfono |
+| Campos opcionales | Correo, Fecha de nacimiento |
+| Etiqueta | **`local`** |
+| Etapa del lead | Formulario (`108223331`) |
+| Responsable | FormenAR (`15483335`) |
+
+Antes de tocarlo, Correo y **Fecha de nacimiento** eran obligatorios y el nombre
+no: al lado de la caja, con el cliente yéndose, eso es exactamente el formulario
+que no se usa (y de 703 ventas, una sola tenía email). Se le desactivó también
+el autocompletado del navegador: en un dispositivo de mostrador compartido
+ofrece los datos del cliente anterior.
+
+### ⚠️ El formulario crea los contactos con `created_by = 0`
+
+Verificado con un envío de prueba (contacto `43230669`): el formulario **no**
+crea los contactos a nombre de FormenAR sino con `created_by = 0`. El filtro
+original del conector —"contactos creados por el usuario del iPad"— los habría
+dejado pasar de largo, y **todas las ventas habrían dado "sin candidato" sin un
+solo error en el log**.
+
+La buena noticia del mismo envío: **la etiqueta `local` queda tanto en el lead
+como en el contacto**, y la consulta por ventana de `created_at` ya devuelve
+`_embedded.tags` sin pedir nada extra. Por eso `Test-ContactoDelLocal` acepta un
+contacto si tiene la etiqueta **o** si lo creó el usuario FormenAR: la etiqueta
+es el marcador bueno, el `created_by` queda como puente mientras convivan las
+cargas viejas. Cuando ya nadie cargue a mano, se saca.
 
 Se captura **nombre y teléfono, y nada más**: nunca email, nunca "Position", y
 el checkbox "Términos y condiciones" (`445074`) no se usó jamás. Tampoco hay
@@ -297,8 +329,16 @@ iPad, 2 sin teléfono usable, 0 ambiguas.**
 
 Queda una limitación que no se puede tapar desde acá: si el mellizo de WhatsApp
 todavía no existe cuando el conector corre (aparece 52 minutos después y el
-conector mira a los 10), la nota queda en la ficha del iPad. Se arregla de raíz
-haciendo que el teléfono se cargue con `+549`, del lado de Kommo.
+conector mira a los 10), la nota queda en la ficha del local.
+
+> **El formulario NO resuelve esto**, contra lo que parecía al ver el prefijo
+> `+54` en el editor. El envío de prueba guardó **`+543794000001`**: el prefijo
+> es el del país, sin el `9` de celular que sí lleva WhatsApp
+> (`+5493794000001`). Siguen siendo dos textos distintos para Kommo, así que
+> **los duplicados se van a seguir creando** y la normalización del conector
+> sigue haciendo falta. Para que coincidieran de verdad, el vendedor tendría que
+> tipear el `9` adelante — frágil, no vale la pena pedirlo. Limpiar los
+> duplicados que ya existen en la base es un trabajo aparte, de higiene de CRM.
 
 ### ⚠️ Los leads del iPad empezaron a caer en "Lead pausado" el 18/08
 
