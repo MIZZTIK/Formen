@@ -194,16 +194,30 @@ schtasks /Create /TN "Formen - Conector Dragonfish a Kommo" /TR "powershell -Exe
 > Se cambia cuando exista el usuario SQL de solo lectura (ver pendientes).
 > Mientras tanto la PC del local queda logueada todo el día.
 
-### El orden de puesta en marcha (importante)
+### El orden de puesta en marcha
 
-1. Agustín cambia el proceso: **el iPad se pasa al cobrar**, lo más pegado
-   posible al cobro.
-2. El conector corre con `"dryRun": true`. **No toca Kommo**, solo mide.
-3. A las dos semanas, `.\conector.ps1 -Medir` da la tasa real de asociación.
-4. Recién con una tasa buena se pone `"dryRun": false`.
+El diseño original era: cambiar el proceso, medir dos semanas con
+`"dryRun": true`, mirar la tasa con `-Medir`, y recién entonces prender la
+escritura. La razón de ese orden es que saltearlo es como se descubre a los tres
+meses que media docena de compras quedaron en la ficha equivocada.
 
-Saltearse el paso 2 es cómo se descubre a los tres meses que media docena de
-compras quedaron en la ficha equivocada.
+**El 19/8/2026 se decidió no esperar** (decisión de Martín, con la advertencia
+dada): el cliente quiere ver las compras en las fichas desde el primer día, y
+sin eso el proyecto no se percibe funcionando. Queda `"dryRun": false` desde el
+arranque.
+
+Lo que hace tolerable el cambio: prender la escritura **no escribe nada hasta que
+el proceso del mostrador cambie**. Mientras el iPad se siga usando como antes no
+hay matcheos, así que las primeras notas aparecen recién cuando los vendedores
+empiezan a cargar al cobrar — con alguien mirando.
+
+El riesgo que se acepta es el del **único candidato equivocado**: un interesado
+cargado justo después de la compra de otro. La regla de ambigüedad no lo cubre
+(hay un solo candidato, y es el que no es). Por eso, los primeros días hay que
+mirar `data\conector.log` y las notas que aparecen en Kommo.
+
+Para apagarlo: `"dryRun": true` de vuelta. Las notas ya escritas quedan y se
+borran a mano.
 
 ### Pendientes antes de producción
 
@@ -224,10 +238,16 @@ compras quedaron en la ficha equivocada.
 - **`limit=250` sin paginar** en `Get-ContactosEnVentana`: irrelevante con
   ventanas de 10 minutos, pero si alguien agranda `ventanaMin` mucho, trunca.
 
-## Estado al 19/08/2026 — desplegado, midiendo
+## Estado al 19/08/2026 — desplegado y escribiendo
 
 Instalado en **`C:\FormenConector\`** (fuera del perfil de usuario, para que la
-Tarea Programada lo vea), con la tarea cada 10 minutos y `"dryRun": true`.
+Tarea Programada lo vea), con la tarea cada 10 minutos y **`"dryRun": false`**
+(ver "El orden de puesta en marcha" más arriba: se decidió no esperar las dos
+semanas de medición).
+
+Tiempo hasta que la nota aparece en Kommo: `esperaMin` (15) desde la venta, más
+lo que falte para la próxima pasada de la tarea (10). **Entre 15 y 25 minutos.**
+No es instantáneo y conviene decirlo, o parece que no funciona.
 
 Verificado end to end ese día:
 
