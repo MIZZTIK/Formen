@@ -312,7 +312,43 @@ Dos datos de escala que conviene tener a mano: son **~4 ventas por día**
 unas 4 notas diarias; y el iPad se usa **menos que las ventas** (3 cargas
 contra 7 ventas). El cuello es el uso del iPad, no el software.
 
-### Qué carga el iPad (auditado por API el 19/8)
+### 🔴 CORRECCIÓN del 20/8: `created_by 15483335` NO marca el mostrador
+
+Todo lo que sigue en esta sección se escribió creyendo que los contactos creados
+por el usuario FormenAR (`15483335`) eran las cargas del iPad. **Casi seguro que
+no lo son.** Al revisar cuatro de ellos el 20/8:
+
+| | |
+|---|---|
+| Contactos | Sergio Kunzi, Ariel Romero, bruno ramirez, Lucas Godoy |
+| Todos | `created_by 15483335`, teléfono en 10 dígitos pelados, sin etiqueta |
+| Todos | lead en "Lead pausado" **con conversación de chat** |
+| Sergio Kunzi | **dos leads creados con 2 minutos de diferencia** |
+
+Eso no es alguien tipeando en un iPad. La hipótesis es que ese `created_by`
+marca **lo que entra por la sesión de WhatsApp Lite**, conectada con el usuario
+FormenAR. Encaja con tres cosas que se habían leído mal:
+
+- el teléfono en 10 dígitos pelados sería el formato de esa integración, no un
+  humano apurado;
+- los "17 duplicados iPad vs WhatsApp" serían **WhatsApp Lite vs el otro canal
+  de WhatsApp**: la misma persona entrando por dos puertas;
+- los tres "Lead pausado" del 18/8 dejan de ser un misterio.
+
+Si se confirma, **las "69 cargas del iPad" medidas el 19/8 nunca fueron cargas
+del iPad**, y los números de esta sección hay que leerlos con esa advertencia.
+
+**Consecuencia operativa, ya aplicada:** con la escritura prendida ese marcador
+es peligroso — alguien que escribe por WhatsApp cinco minutos después de que
+*otro* cliente pagó cumple la regla de "un solo candidato" y se lleva la compra
+ajena. Se desactivó poniendo **`kommo.ipadUserId = -1`** en la config del local:
+`Test-ContactoDelLocal` queda reconociendo **solo la etiqueta del formulario**.
+No cuesta nada, porque el matcheo estaba en 0 de 6.
+
+> Pendiente: confirmar abriendo una de esas fichas en Kommo y viendo si adentro
+> hay conversación de WhatsApp. Hasta entonces esto es hipótesis, no hecho.
+
+### Qué carga el iPad (auditado por API el 19/8, ver corrección arriba)
 
 Hasta el 19/8/2026 **no había ningún formulario de por medio**: los 89 leads del
 usuario FormenAR tienen `source_id` en `null`, sin nota de envío y con el campo
@@ -349,8 +385,13 @@ La buena noticia del mismo envío: **la etiqueta `local` queda tanto en el lead
 como en el contacto**, y la consulta por ventana de `created_at` ya devuelve
 `_embedded.tags` sin pedir nada extra. Por eso `Test-ContactoDelLocal` acepta un
 contacto si tiene la etiqueta **o** si lo creó el usuario FormenAR: la etiqueta
-es el marcador bueno, el `created_by` queda como puente mientras convivan las
-cargas viejas. Cuando ya nadie cargue a mano, se saca.
+es el marcador bueno, el `created_by` era el puente mientras convivieran las
+cargas viejas.
+
+**Ese puente está desactivado desde el 20/8** (`kommo.ipadUserId = -1`, ver la
+corrección más arriba): el `created_by` no marcaba el mostrador sino, muy
+probablemente, la sesión de WhatsApp Lite. El código lo sigue soportando por si
+alguna vez hace falta un segundo marcador; hoy la etiqueta es el único.
 
 Se captura **nombre y teléfono, y nada más**: nunca email, nunca "Position", y
 el checkbox "Términos y condiciones" (`445074`) no se usó jamás. Tampoco hay
