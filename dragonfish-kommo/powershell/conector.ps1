@@ -158,6 +158,80 @@ WHERE ANULADO = 0 $filtroTipo AND $ts BETWEEN @desde AND @hasta
   return @($filas | ForEach-Object { "$($_.CODIGO)".Trim() })
 }
 
+function ConvertTo-MontoTexto {
+  param($Monto)
+  if ($null -eq $Monto -or $Monto -is [DBNull]) { return 's/d' }
+  return '$ ' + ('{0:N0}' -f [decimal]$Monto)
+}
+
+function Get-NombreMedioPago {
+  param([string]$Codigo)
+  $c = "$Codigo".Trim()
+  $map = @{
+    '0'   = 'PESOS'
+    'VI'  = 'VISA'
+    'NA'  = 'NARANJA'
+    'TR'  = 'Transferencia Bancaria'
+    'EL'  = 'ELECTRON'
+    'MAE' = 'MAESTRO'
+  }
+  if ($map.ContainsKey($c)) { return $map[$c] }
+  if ($c) { return $c }
+  return 'Medio de pago s/d'
+}
+
+function Get-DetalleVenta {
+  param($Cfg, $Venta)
+
+  $qItems = @"
+SELECT TOP (20)
+  NROITEM,
+  LTRIM(RTRIM(ISNULL(FART,''))) AS articulo,
+  LTRIM(RTRIM(ISNULL(FTXT,''))) AS descripcion,
+  FCANT AS cantidad,
+  FPRECIO AS precio_unitario,
+  MNTPTOT AS total_item,
+  LTRIM(RTRIM(ISNULL(TALLE,''))) AS talle,
+  LTRIM(RTRIM(ISNULL(FCOLTXT,''))) AS color
+FROM [$($Cfg.sql.schema)].[COMPROBANTEVDET]
+WHERE CODIGO = @id
+ORDER BY NROITEM
+"@
+  $items = @(Invoke-Sql -Cfg $Cfg -Query $qItems -Params @{ id = $Venta.Id } | ForEach-Object {
+      [pscustomobject]@{
+        articulo    = "$($_.articulo)".Trim()
+        descripcion = "$($_.descripcion)".Trim()
+        cantidad    = if ($_.cantidad -is [DBNull]) { $null } else { [decimal]$_.cantidad }
+        total       = if ($_.total_item -is [DBNull]) { $null } else { [decimal]$_.total_item }
+        talle       = "$($_.talle)".Trim()
+        color       = "$($_.color)".Trim()
+      }
+    })
+
+  $qPagos = @"
+SELECT
+  LTRIM(RTRIM(ISNULL(VALOR,''))) AS codigo,
+  SUM(MONTO) AS monto
+FROM [$($Cfg.sql.schema)].[CUPONES]
+WHERE COMP = @id
+GROUP BY LTRIM(RTRIM(ISNULL(VALOR,'')))
+ORDER BY SUM(MONTO) DESC
+"@
+  $pagos = @(Invoke-Sql -Cfg $Cfg -Query $qPagos -Params @{ id = $Venta.Id } | ForEach-Object {
+      $codigo = "$($_.codigo)".Trim()
+      [pscustomobject]@{
+        codigo = $codigo
+        nombre = Get-NombreMedioPago $codigo
+        monto  = if ($_.monto -is [DBNull]) { $null } else { [decimal]$_.monto }
+      }
+    })
+
+  return [pscustomobject]@{
+    items = $items
+    pagos = $pagos
+  }
+}
+
 # ── Kommo ────────────────────────────────────────────────────────────────────
 
 function Invoke-Kommo {
@@ -355,15 +429,42 @@ function Add-NotaKommo {
 }
 
 function New-TextoNota {
-  param($Venta, [int]$Minutos)
-  $total = if ($null -ne $Venta.Total) { '$ ' + ('{0:N0}' -f $Venta.Total) } else { 's/d' }
+  param($Venta, [int]$Minutos, $Detalle = $null)
+  $total = ConvertTo-MontoTexto $Venta.Total
   $lineas = @(
     'Compra en el local',
     "Comprobante: $($Venta.Comprobante)",
     "Fecha: $($Venta.Ts.ToString('dd/MM/yyyy HH:mm'))",
-    "Total: $total",
-    "(asociado automaticamente: el contacto se cargo $Minutos min despues de la venta)"
+    "Total: $total"
   )
+
+  if ($Detalle -and $Detalle.items.Count -gt 0) {
+    $lineas += ''
+    $lineas += 'Productos:'
+    foreach ($it in @($Detalle.items | Select-Object -First 10)) {
+      $cant = if ($null -ne $it.cantidad) { ('{0:N0}' -f $it.cantidad) } else { 's/cant' }
+      $nombre = if ($it.descripcion) { $it.descripcion } else { $it.articulo }
+      $extra = @()
+      if ($it.talle) { $extra += "talle $($it.talle)" }
+      if ($it.color) { $extra += "color $($it.color)" }
+      $sufijo = if ($extra.Count -gt 0) { ' (' + ($extra -join ', ') + ')' } else { '' }
+      $lineas += "- $nombre x$cant$sufijo - $(ConvertTo-MontoTexto $it.total)"
+    }
+    if ($Detalle.items.Count -gt 10) {
+      $lineas += "- ... y $($Detalle.items.Count - 10) item(s) mas"
+    }
+  }
+
+  if ($Detalle -and $Detalle.pagos.Count -gt 0) {
+    $lineas += ''
+    $lineas += 'Pagos:'
+    foreach ($p in @($Detalle.pagos)) {
+      $lineas += "- $($p.nombre): $(ConvertTo-MontoTexto $p.monto)"
+    }
+  }
+
+  $lineas += ''
+  $lineas += "(asociado automaticamente: el contacto se cargo $Minutos min despues de la venta)"
   return Remove-Emojis ($lineas -join "`n")
 }
 
@@ -593,7 +694,13 @@ function Invoke-Pasada {
           if ($Cfg.dryRun) {
             Write-Log 'info' "[DRY_RUN] $($venta.Comprobante) -> contacto $($destino.id) ($($sel.modo), +$min min)"
           } else {
-            [void](Add-NotaKommo -Cfg $Cfg -ContactoId $destino.id -Texto (New-TextoNota -Venta $venta -Minutos $min))
+            $detalle = $null
+            try {
+              $detalle = Get-DetalleVenta -Cfg $Cfg -Venta $venta
+            } catch {
+              Write-Log 'warn' "No se pudo leer detalle de $($venta.Comprobante): $($_.Exception.Message)"
+            }
+            [void](Add-NotaKommo -Cfg $Cfg -ContactoId $destino.id -Texto (New-TextoNota -Venta $venta -Minutos $min -Detalle $detalle))
             Write-Log 'info' "$($venta.Comprobante) -> nota en contacto $($destino.id) ($($sel.modo), +$min min)"
           }
           $stats.asociadas++

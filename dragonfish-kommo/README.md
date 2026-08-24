@@ -143,6 +143,35 @@ El siguiente refuerzo es pedir en el formulario un campo opcional con los
 últimos 4 dígitos del comprobante. Si el cliente lo carga, el apareo deja de ser
 solo temporal y pasa a exacto dentro de la ventana.
 
+### 2e. Exploración del 24/8: recibo, productos y medios de pago
+
+Se corrió `explorar-recibos.ps1` y después `explorar-recibos-detalle.ps1` en la
+PC del local. Resultado:
+
+| Pregunta | Resultado |
+|---|---|
+| Recibos | `RECIBO` y `RECIBODET` tienen 0 filas; no son la fuente para este flujo |
+| Cabecera de venta | `COMPROBANTEV` guarda el comprobante, fecha, total y cliente |
+| Detalle de prendas | `COMPROBANTEVDET.CODIGO = COMPROBANTEV.CODIGO` |
+| Pagos | `CUPONES.COMP = COMPROBANTEV.CODIGO` |
+| Caja | `MOVCAJA` sirve para ver movimientos y nombres, pero los montos confiables salen de `CUPONES` |
+
+Medios de pago vistos en ventas recientes:
+
+| Código | Medio |
+|---|---|
+| `0` | PESOS |
+| `VI` | VISA |
+| `NA` | NARANJA |
+| `TR` | Transferencia Bancaria |
+| `EL` | ELECTRON |
+| `MAE` | MAESTRO |
+
+Conclusión: para la nota de Kommo alcanza con `COMPROBANTEV` + `COMPROBANTEVDET`
+y `CUPONES`. El conector agrega productos y pagos cuando ya encontró un contacto
+único. Si esa lectura falla, escribe igual la nota básica para no frenar el
+apareo.
+
 ### 3. Mapeo de la base, para cuando se destrabe
 
 Ventas: `ZooLogic.COMPROBANTEV` (cabecera) + `ZooLogic.COMPROBANTEVDET` (detalle).
