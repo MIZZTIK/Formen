@@ -121,6 +121,28 @@ Es una decisión de Agustín sobre el proceso de atención, no de software:
 
 La reproducción del análisis quedó en [`cruce.sql`](cruce.sql).
 
+### 2d. Exploración del 24/8: Dragonfish no resuelve el dueño del encargo
+
+Se copió `explorar-encargos.ps1` a `C:\FormenConector\` y se corrió en la PC del
+local. Resultado:
+
+| Pregunta | Resultado |
+|---|---|
+| Tablas de taller / encargo / pedido | existen `LIQTALLER`, `TALLER`, `TALLERPROC`, pero las tres tienen 0 filas |
+| Ventas últimos 90 días | 381 ventas; `FPERSON` y `FCLIENTE` vienen cargados en todas |
+| Valor real de `FCLIENTE` | 356 de 381 son `Consumidor, Final`; los nombres reales son casos aislados |
+| Email | 1 de 381 |
+| Teléfono en `CLI` | no hay columnas de teléfono/celular; solo nombre y email |
+
+Conclusión: para el flujo del mostrador, Dragonfish sigue sin dar una llave
+usable hacia Kommo. Si una venta queda como encargo, ese dato no aparece en las
+tablas obvias de taller y la ficha `CLI` tampoco tiene teléfono. El formulario
+de Kommo sigue siendo la llave principal.
+
+El siguiente refuerzo es pedir en el formulario un campo opcional con los
+últimos 4 dígitos del comprobante. Si el cliente lo carga, el apareo deja de ser
+solo temporal y pasa a exacto dentro de la ventana.
+
 ### 3. Mapeo de la base, para cuando se destrabe
 
 Ventas: `ZooLogic.COMPROBANTEV` (cabecera) + `ZooLogic.COMPROBANTEVDET` (detalle).

@@ -124,6 +124,40 @@ ORDER BY $ts ASC
   }
 }
 
+# El reves del apareo: dado un contacto, que ventas pueden reclamarlo.
+#
+# La ventana de una venta mira hacia adelante buscando contactos; esta mira
+# hacia atras buscando ventas. Hace falta por el cliente que NO se anota: no
+# deja ningun rastro, pero su venta sale a buscar candidato igual y se queda
+# con el contacto del cliente SIGUIENTE, que es el unico en su ventana. La
+# regla de ambiguedad no lo salva (hay un solo candidato, no dos) y la nota
+# termina en la ficha equivocada sin que nada lo delate.
+#
+# Se consulta la base y no las ventas de esta pasada porque dos ventas
+# seguidas caen en pasadas distintas: con esperaMin, la de las 14:32 se evalua
+# a las 14:42 y la de las 14:38 a las 14:48. Preguntandole a Dragonfish, las
+# dos ven lo mismo y las dos se abstienen.
+function Get-VentasQueReclaman {
+  param($Cfg, [datetime]$Creado)
+
+  $ts = "CAST(CONVERT(varchar(10),FALTAFW,120)+' '+HALTAFW AS datetime)"
+  $tipos = ($Cfg.tiposVenta | ForEach-Object { [int]$_ }) -join ','
+  $filtroTipo = if ($tipos) { " AND FACTTIPO IN ($tipos)" } else { '' }
+
+  # Una venta reclama al contacto si el contacto cae en SU ventana, o sea si
+  # la venta ocurrio entre (creado - ventana) y creado.
+  $q = @"
+SELECT CODIGO
+FROM [$($Cfg.sql.schema)].[COMPROBANTEV]
+WHERE ANULADO = 0 $filtroTipo AND $ts BETWEEN @desde AND @hasta
+"@
+  $filas = Invoke-Sql -Cfg $Cfg -Query $q -Params @{
+    desde = $Creado.AddMinutes(-1 * $Cfg.match.ventanaMin)
+    hasta = $Creado
+  }
+  return @($filas | ForEach-Object { "$($_.CODIGO)".Trim() })
+}
+
 # ── Kommo ────────────────────────────────────────────────────────────────────
 
 function Invoke-Kommo {
@@ -186,6 +220,83 @@ function Get-TelefonoContacto {
     }
   }
   return $null
+}
+
+function ConvertTo-Ultimos4 {
+  param([string]$Texto)
+  $d = [regex]::Replace("$Texto", '\D', '')
+  if ($d.Length -ge 4) { return $d.Substring($d.Length - 4) }
+  return $null
+}
+
+function Get-Ultimos4Comprobante {
+  param($Venta)
+  return ConvertTo-Ultimos4 $Venta.Comprobante
+}
+
+function Get-ComprobanteContacto {
+  param($Cfg, $Contacto)
+
+  $fieldId = if ($Cfg.match.comprobanteUltimos4FieldId) { [int64]$Cfg.match.comprobanteUltimos4FieldId } else { $null }
+  $fieldName = if ($Cfg.match.comprobanteUltimos4FieldName) { "$($Cfg.match.comprobanteUltimos4FieldName)" } else { $null }
+  if (-not $fieldId -and -not $fieldName) { return $null }
+
+  foreach ($f in @($Contacto.custom_fields_values)) {
+    $porId = ($fieldId -and [int64]$f.field_id -eq $fieldId)
+    $porNombre = ($fieldName -and "$($f.field_name)" -eq $fieldName)
+    if ($porId -or $porNombre) {
+      foreach ($v in @($f.values)) {
+        $ultimos4 = ConvertTo-Ultimos4 "$($v.value)"
+        if ($ultimos4) { return $ultimos4 }
+      }
+    }
+  }
+  return $null
+}
+
+function Select-CandidatosParaVenta {
+  param($Cfg, $Venta, $Candidatos)
+
+  $esperado = Get-Ultimos4Comprobante $Venta
+  $campoActivo = ($Cfg.match.comprobanteUltimos4FieldId -or $Cfg.match.comprobanteUltimos4FieldName)
+  if (-not $campoActivo -or -not $esperado) {
+    return [pscustomobject]@{
+      candidatos  = @($Candidatos)
+      modo        = 'tiempo'
+      esperado    = $esperado
+      descartados = @()
+    }
+  }
+
+  $exactos = @()
+  $sinCampo = @()
+  $descartados = @()
+  foreach ($c in @($Candidatos)) {
+    $informado = Get-ComprobanteContacto -Cfg $Cfg -Contacto $c
+    if (-not $informado) {
+      $sinCampo += $c
+    } elseif ($informado -eq $esperado) {
+      $exactos += $c
+    } else {
+      $descartados += [pscustomobject]@{ id = $c.id; informado = $informado }
+    }
+  }
+
+  if ($exactos.Count -gt 0) {
+    return [pscustomobject]@{
+      candidatos  = @($exactos)
+      modo        = 'comprobante'
+      esperado    = $esperado
+      descartados = @($descartados)
+    }
+  }
+
+  return [pscustomobject]@{
+    candidatos  = @($sinCampo)
+    modo        = 'tiempo'
+    esperado    = $esperado
+    descartados = @($descartados)
+  }
 }
 
 # "3794801505" y "+5493794801505" son la misma persona. Los dejamos en los
@@ -408,7 +519,9 @@ function Show-Reporte {
   Write-Host 'Como leerlo:'
   Write-Host '  tasa alta (>60%)      -> el proceso funciona, se puede poner dryRun=false.'
   Write-Host '  muchas "sin contacto" -> no estan pasando el iPad, o lo pasan tarde.'
-  Write-Host '  muchas "ambiguas"     -> dos clientes seguidos; achicar la ventana.'
+  Write-Host '  muchas "ambiguas"     -> dos clientes seguidos, o uno que no se anoto y'
+  Write-Host '                           dejo su venta apuntando al de al lado. Achicar la'
+  Write-Host '                           ventana, o pedir que carguen tambien al que se niega.'
 }
 
 # ── Una pasada ───────────────────────────────────────────────────────────────
@@ -436,31 +549,57 @@ function Invoke-Pasada {
     $stats.evaluadas++
     try {
       $hasta = $venta.Ts.AddMinutes($Cfg.match.ventanaMin)
-      $cand = Get-ContactosEnVentana -Cfg $Cfg -Desde $venta.Ts -Hasta $hasta
+      $todos = Get-ContactosEnVentana -Cfg $Cfg -Desde $venta.Ts -Hasta $hasta
+      $sel = Select-CandidatosParaVenta -Cfg $Cfg -Venta $venta -Candidatos $todos
+      $cand = @($sel.candidatos)
 
       if ($cand.Count -eq 0) {
         $stats.sin_candidato++
-        Write-Log 'debug' "Venta $($venta.Comprobante): sin contacto en la ventana."
-        Add-Registro -Resultado 'sin_candidato' -Venta $venta -Candidatos @()
+        if ($todos.Count -gt 0 -and $sel.descartados.Count -gt 0) {
+          Write-Log 'debug' "Venta $($venta.Comprobante): contactos en ventana, pero ninguno con comprobante $($sel.esperado)."
+          Add-Registro -Resultado 'sin_candidato' -Venta $venta -Candidatos $todos `
+            -Extra @{ motivo = 'comprobante_no_coincide'; comprobante_ultimos4 = $sel.esperado; descartados = $sel.descartados }
+        } else {
+          Write-Log 'debug' "Venta $($venta.Comprobante): sin contacto en la ventana."
+          Add-Registro -Resultado 'sin_candidato' -Venta $venta -Candidatos @()
+        }
       } elseif ($cand.Count -gt 1) {
         $stats.ambiguas++
         $ids = ($cand | ForEach-Object { $_.id }) -join ', '
-        Write-Log 'warn' "Venta $($venta.Comprobante): $($cand.Count) contactos en la ventana -> SIN asociar (ids: $ids)."
-        Add-Registro -Resultado 'ambigua' -Venta $venta -Candidatos $cand
+        if ($sel.modo -eq 'comprobante') {
+          Write-Log 'warn' "Venta $($venta.Comprobante): $($cand.Count) contactos con comprobante $($sel.esperado) -> SIN asociar (ids: $ids)."
+          Add-Registro -Resultado 'ambigua' -Venta $venta -Candidatos $cand `
+            -Extra @{ motivo = 'comprobante_duplicado'; comprobante_ultimos4 = $sel.esperado }
+        } else {
+          Write-Log 'warn' "Venta $($venta.Comprobante): $($cand.Count) contactos en la ventana -> SIN asociar (ids: $ids)."
+          Add-Registro -Resultado 'ambigua' -Venta $venta -Candidatos $cand
+        }
       } else {
         $c = $cand[0]
         $creado = [DateTimeOffset]::FromUnixTimeSeconds($c.created_at).LocalDateTime
         $min = [math]::Round(($creado - $venta.Ts).TotalMinutes)
-        $destino = Resolve-ContactoDestino -Cfg $Cfg -Contacto $c
-        if ($Cfg.dryRun) {
-          Write-Log 'info' "[DRY_RUN] $($venta.Comprobante) -> contacto $($destino.id) (+$min min)"
+
+        # Candidato unico, pero puede no ser nuestro: si otra venta tambien
+        # llega a este contacto, no hay forma de saber cual de las dos es.
+        $reclaman = if ($sel.modo -eq 'comprobante') { @($venta.Id) } else { Get-VentasQueReclaman -Cfg $Cfg -Creado $creado }
+        if ($reclaman.Count -gt 1) {
+          $stats.ambiguas++
+          Write-Log 'warn' ("Venta $($venta.Comprobante): el contacto $($c.id) lo reclaman " +
+            "$($reclaman.Count) ventas ($($reclaman -join ', ')) -> SIN asociar.")
+          Add-Registro -Resultado 'ambigua' -Venta $venta -Candidatos $cand `
+            -Extra @{ motivo = 'contacto_compartido'; minutos = $min; ventas_en_disputa = $reclaman }
         } else {
-          [void](Add-NotaKommo -Cfg $Cfg -ContactoId $destino.id -Texto (New-TextoNota -Venta $venta -Minutos $min))
-          Write-Log 'info' "$($venta.Comprobante) -> nota en contacto $($destino.id) (+$min min)"
+          $destino = Resolve-ContactoDestino -Cfg $Cfg -Contacto $c
+          if ($Cfg.dryRun) {
+            Write-Log 'info' "[DRY_RUN] $($venta.Comprobante) -> contacto $($destino.id) ($($sel.modo), +$min min)"
+          } else {
+            [void](Add-NotaKommo -Cfg $Cfg -ContactoId $destino.id -Texto (New-TextoNota -Venta $venta -Minutos $min))
+            Write-Log 'info' "$($venta.Comprobante) -> nota en contacto $($destino.id) ($($sel.modo), +$min min)"
+          }
+          $stats.asociadas++
+          Add-Registro -Resultado 'asociada' -Venta $venta -Candidatos $cand `
+            -Extra @{ minutos = $min; contacto_destino = $destino.id; era_duplicado = ($destino.id -ne $c.id); modo_apareo = $sel.modo; comprobante_ultimos4 = $sel.esperado }
         }
-        $stats.asociadas++
-        Add-Registro -Resultado 'asociada' -Venta $venta -Candidatos $cand `
-          -Extra @{ minutos = $min; contacto_destino = $destino.id; era_duplicado = ($destino.id -ne $c.id) }
       }
 
       # Asociada o no, queda procesada: si el contacto no aparecio en la
