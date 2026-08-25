@@ -22,6 +22,21 @@
     "comprobanteUltimos4FieldName": ""
   },
 
+  "camposCompra": {
+    "ultimaCompraFechaFieldId": null,
+    "ultimaCompraFechaFieldName": "",
+    "ultimoComprobanteFieldId": null,
+    "ultimoComprobanteFieldName": "",
+    "ultimaCompraTotalFieldId": null,
+    "ultimaCompraTotalFieldName": "",
+    "ultimos4ComprobanteFieldId": null,
+    "ultimos4ComprobanteFieldName": "",
+    "ultimaCompraProductosFieldId": null,
+    "ultimaCompraProductosFieldName": "",
+    "ultimaCompraPagosFieldId": null,
+    "ultimaCompraPagosFieldName": ""
+  },
+
   "avisos": {
     "telegramToken": "",
     "telegramChatId": "",

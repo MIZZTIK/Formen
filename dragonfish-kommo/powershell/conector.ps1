@@ -428,6 +428,131 @@ function Add-NotaKommo {
   return Invoke-Kommo -Cfg $Cfg -Metodo 'POST' -Ruta '/api/v4/contacts/notes' -Cuerpo $cuerpo
 }
 
+function Get-PropValor {
+  param($Objeto, [string]$Nombre)
+  if (-not $Objeto) { return $null }
+  $p = $Objeto.PSObject.Properties[$Nombre]
+  if ($p) { return $p.Value }
+  return $null
+}
+
+$script:CamposContactoKommo = $null
+
+function Get-CamposContactoKommo {
+  param($Cfg)
+  if ($script:CamposContactoKommo) { return $script:CamposContactoKommo }
+  $r = Invoke-Kommo -Cfg $Cfg -Metodo 'GET' -Ruta '/api/v4/contacts/custom_fields?limit=250'
+  $script:CamposContactoKommo = @($r._embedded.custom_fields)
+  return $script:CamposContactoKommo
+}
+
+function Resolve-CampoContactoKommo {
+  param($Cfg, [Nullable[int64]]$FieldId, [string]$FieldName)
+  $campos = Get-CamposContactoKommo -Cfg $Cfg
+  if ($FieldId) {
+    $porId = @($campos | Where-Object { [int64]$_.id -eq [int64]$FieldId } | Select-Object -First 1)[0]
+    if ($porId) { return $porId }
+    return [pscustomobject]@{ id = [int64]$FieldId; name = $FieldName; type = '' }
+  }
+  if (-not $FieldName) { return $null }
+  return @($campos | Where-Object { "$($_.name)" -eq $FieldName } | Select-Object -First 1)[0]
+}
+
+function ConvertTo-ValorCampoKommo {
+  param($Campo, $Valor)
+  if ($null -eq $Valor -or $Valor -is [DBNull]) { return $null }
+  $tipo = "$($Campo.type)"
+  if ($tipo -match 'date') {
+    if ($Valor -is [datetime]) {
+      return [DateTimeOffset]::new($Valor).ToUnixTimeSeconds()
+    }
+    return [int64]$Valor
+  }
+  if ($tipo -match 'numeric|monetary') {
+    return [decimal]$Valor
+  }
+  if ($Valor -is [datetime]) { return $Valor.ToString('dd/MM/yyyy HH:mm') }
+  return "$Valor"
+}
+
+function Join-ProductosResumen {
+  param($Detalle)
+  if (-not $Detalle -or $Detalle.items.Count -eq 0) { return '' }
+  $partes = @()
+  foreach ($it in @($Detalle.items | Select-Object -First 8)) {
+    $cant = if ($null -ne $it.cantidad) { ('{0:N0}' -f $it.cantidad) } else { 's/cant' }
+    $nombre = if ($it.descripcion) { $it.descripcion } else { $it.articulo }
+    $extra = if ($it.talle) { " talle $($it.talle)" } else { '' }
+    $partes += "$nombre x$cant$extra"
+  }
+  if ($Detalle.items.Count -gt 8) { $partes += "... y $($Detalle.items.Count - 8) mas" }
+  return $partes -join '; '
+}
+
+function Join-PagosResumen {
+  param($Detalle)
+  if (-not $Detalle -or $Detalle.pagos.Count -eq 0) { return '' }
+  return (@($Detalle.pagos) | ForEach-Object { "$($_.nombre): $(ConvertTo-MontoTexto $_.monto)" }) -join '; '
+}
+
+function Get-DefinicionesCamposCompra {
+  param($Cfg, $Venta, $Detalle)
+  $c = $Cfg.camposCompra
+  if (-not $c) { return @() }
+
+  $defs = @(
+    @{ clave = 'ultimaCompraFecha'; id = 'ultimaCompraFechaFieldId'; nombre = 'ultimaCompraFechaFieldName'; valor = $Venta.Ts },
+    @{ clave = 'ultimoComprobante'; id = 'ultimoComprobanteFieldId'; nombre = 'ultimoComprobanteFieldName'; valor = $Venta.Comprobante },
+    @{ clave = 'ultimaCompraTotal'; id = 'ultimaCompraTotalFieldId'; nombre = 'ultimaCompraTotalFieldName'; valor = $Venta.Total },
+    @{ clave = 'ultimos4Comprobante'; id = 'ultimos4ComprobanteFieldId'; nombre = 'ultimos4ComprobanteFieldName'; valor = (Get-Ultimos4Comprobante $Venta) },
+    @{ clave = 'ultimaCompraProductos'; id = 'ultimaCompraProductosFieldId'; nombre = 'ultimaCompraProductosFieldName'; valor = (Join-ProductosResumen $Detalle) },
+    @{ clave = 'ultimaCompraPagos'; id = 'ultimaCompraPagosFieldId'; nombre = 'ultimaCompraPagosFieldName'; valor = (Join-PagosResumen $Detalle) }
+  )
+
+  $activos = @()
+  foreach ($d in $defs) {
+    $fieldId = Get-PropValor -Objeto $c -Nombre $d.id
+    $fieldName = Get-PropValor -Objeto $c -Nombre $d.nombre
+    if ($fieldId -or $fieldName) {
+      $activos += [pscustomobject]@{
+        clave     = $d.clave
+        fieldId   = if ($fieldId) { [int64]$fieldId } else { $null }
+        fieldName = if ($fieldName) { "$fieldName" } else { '' }
+        valor     = $d.valor
+      }
+    }
+  }
+  return $activos
+}
+
+function Update-CamposCompraKommo {
+  param($Cfg, [int64]$ContactoId, $Venta, $Detalle)
+
+  $defs = @(Get-DefinicionesCamposCompra -Cfg $Cfg -Venta $Venta -Detalle $Detalle)
+  if ($defs.Count -eq 0) { return }
+
+  $customFields = @()
+  foreach ($d in $defs) {
+    $campo = Resolve-CampoContactoKommo -Cfg $Cfg -FieldId $d.fieldId -FieldName $d.fieldName
+    if (-not $campo) {
+      Write-Log 'warn' "Campo Kommo no encontrado para $($d.clave): $($d.fieldName)"
+      continue
+    }
+
+    $valor = ConvertTo-ValorCampoKommo -Campo $campo -Valor $d.valor
+    if ($null -eq $valor -or "$valor" -eq '') { continue }
+
+    $customFields += @{
+      field_id = [int64]$campo.id
+      values   = @(@{ value = $valor })
+    }
+  }
+
+  if ($customFields.Count -eq 0) { return }
+  $cuerpo = @{ custom_fields_values = $customFields }
+  [void](Invoke-Kommo -Cfg $Cfg -Metodo 'PATCH' -Ruta "/api/v4/contacts/$ContactoId" -Cuerpo $cuerpo)
+}
+
 function New-TextoNota {
   param($Venta, [int]$Minutos, $Detalle = $null)
   $total = ConvertTo-MontoTexto $Venta.Total
@@ -701,6 +826,11 @@ function Invoke-Pasada {
               Write-Log 'warn' "No se pudo leer detalle de $($venta.Comprobante): $($_.Exception.Message)"
             }
             [void](Add-NotaKommo -Cfg $Cfg -ContactoId $destino.id -Texto (New-TextoNota -Venta $venta -Minutos $min -Detalle $detalle))
+            try {
+              Update-CamposCompraKommo -Cfg $Cfg -ContactoId $destino.id -Venta $venta -Detalle $detalle
+            } catch {
+              Write-Log 'warn' "No se pudieron actualizar campos de compra en contacto $($destino.id): $($_.Exception.Message)"
+            }
             Write-Log 'info' "$($venta.Comprobante) -> nota en contacto $($destino.id) ($($sel.modo), +$min min)"
           }
           $stats.asociadas++

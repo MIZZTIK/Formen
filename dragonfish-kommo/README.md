@@ -172,6 +172,21 @@ y `CUPONES`. El conector agrega productos y pagos cuando ya encontró un contact
 único. Si esa lectura falla, escribe igual la nota básica para no frenar el
 apareo.
 
+Además de la nota, el conector puede actualizar campos estructurados de "última
+compra" en el contacto, si están configurados en `camposCompra`:
+
+| Campo | Uso |
+|---|---|
+| Última compra - fecha | filtros por clientes que compraron o no compraron hace X meses |
+| Último comprobante | referencia rápida en la ficha |
+| Última compra - total | segmentación por valor comprado |
+| Últimos 4 comprobante | soporte al apareo y auditoría |
+| Última compra - productos | resumen de prendas |
+| Última compra - pagos | resumen de medios de pago |
+
+Estos campos se pisan con cada compra nueva. El historial completo queda como
+notas, una por compra.
+
 ### 3. Mapeo de la base, para cuando se destrabe
 
 Ventas: `ZooLogic.COMPROBANTEV` (cabecera) + `ZooLogic.COMPROBANTEVDET` (detalle).
