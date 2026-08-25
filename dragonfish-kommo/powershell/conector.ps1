@@ -54,6 +54,11 @@ function Get-Config {
   if ($c.sql.schema -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
     throw "Nombre de esquema invalido: $($c.sql.schema)"
   }
+  foreach ($db in @(Get-SqlDatabases -Cfg $c)) {
+    if ($db -notmatch '^[A-Za-z_][A-Za-z0-9_]*$') {
+      throw "Nombre de base invalido: $db"
+    }
+  }
   return $c
 }
 
@@ -66,10 +71,30 @@ function Remove-Emojis {
 
 # ── Dragonfish (SQL Server, solo lectura) ────────────────────────────────────
 
-function Invoke-Sql {
-  param($Cfg, [string]$Query, [hashtable]$Params = @{})
+function Get-SqlDatabases {
+  param($Cfg)
+  $bases = @()
+  $p = $Cfg.sql.PSObject.Properties['databases']
+  if ($p -and $p.Value) {
+    $bases = @($p.Value)
+  } else {
+    $bases = @($Cfg.sql.database)
+  }
+  return @($bases | Where-Object { -not [string]::IsNullOrWhiteSpace("$_") } | Select-Object -Unique)
+}
 
-  $cs = "Server=$($Cfg.sql.server);Database=$($Cfg.sql.database);Connect Timeout=15;"
+function Get-SistemaVentaPorBase {
+  param([string]$Base)
+  if ($Base -match 'BLACK') { return 'Black' }
+  if ($Base -match 'FORMEN') { return 'Formen' }
+  return $Base
+}
+
+function Invoke-Sql {
+  param($Cfg, [string]$Query, [hashtable]$Params = @{}, [string]$Database = $null)
+
+  $db = if ($Database) { $Database } else { $Cfg.sql.database }
+  $cs = "Server=$($Cfg.sql.server);Database=$db;Connect Timeout=15;"
   if ($Cfg.sql.user) {
     $cs += "User Id=$($Cfg.sql.user);Password=$($Cfg.sql.password);"
   } else {
@@ -109,19 +134,27 @@ FROM [$($Cfg.sql.schema)].[COMPROBANTEV]
 WHERE ANULADO = 0 $filtroTipo AND $ts > @desde
 ORDER BY $ts ASC
 "@
-  $filas = Invoke-Sql -Cfg $Cfg -Query $q -Params @{ desde = $Desde }
+  $ventas = @()
+  foreach ($db in @(Get-SqlDatabases -Cfg $Cfg)) {
+    $filas = Invoke-Sql -Cfg $Cfg -Database $db -Query $q -Params @{ desde = $Desde }
 
-  return $filas | ForEach-Object {
-    $letra = "$($_.FLETRA)".Trim()
-    $pto = "{0:d4}" -f [int]$_.FPTOVEN
-    $nro = "{0:d8}" -f [int]$_.FNUMCOMP
-    [pscustomobject]@{
-      Id          = "$($_.CODIGO)".Trim()
-      Comprobante = "$letra $pto-$nro".Trim()
-      Ts          = [datetime]$_.TS
-      Total       = if ($_.FTOTAL -is [DBNull]) { $null } else { [decimal]$_.FTOTAL }
+    $ventas += @($filas | ForEach-Object {
+        $codigo = "$($_.CODIGO)".Trim()
+        $letra = "$($_.FLETRA)".Trim()
+        $pto = "{0:d4}" -f [int]$_.FPTOVEN
+        $nro = "{0:d8}" -f [int]$_.FNUMCOMP
+        [pscustomobject]@{
+          Id          = "${db}:$codigo"
+          Codigo      = $codigo
+          Base        = $db
+          Sistema     = Get-SistemaVentaPorBase $db
+          Comprobante = "$letra $pto-$nro".Trim()
+          Ts          = [datetime]$_.TS
+          Total       = if ($_.FTOTAL -is [DBNull]) { $null } else { [decimal]$_.FTOTAL }
+        }
+      })
     }
-  }
+  return @($ventas | Sort-Object Ts)
 }
 
 # El reves del apareo: dado un contacto, que ventas pueden reclamarlo.
@@ -151,11 +184,15 @@ SELECT CODIGO
 FROM [$($Cfg.sql.schema)].[COMPROBANTEV]
 WHERE ANULADO = 0 $filtroTipo AND $ts BETWEEN @desde AND @hasta
 "@
-  $filas = Invoke-Sql -Cfg $Cfg -Query $q -Params @{
-    desde = $Creado.AddMinutes(-1 * $Cfg.match.ventanaMin)
-    hasta = $Creado
+  $ids = @()
+  foreach ($db in @(Get-SqlDatabases -Cfg $Cfg)) {
+    $filas = Invoke-Sql -Cfg $Cfg -Database $db -Query $q -Params @{
+      desde = $Creado.AddMinutes(-1 * $Cfg.match.ventanaMin)
+      hasta = $Creado
+    }
+    $ids += @($filas | ForEach-Object { "${db}:$($_.CODIGO)".Trim() })
   }
-  return @($filas | ForEach-Object { "$($_.CODIGO)".Trim() })
+  return @($ids)
 }
 
 function ConvertTo-MontoTexto {
@@ -197,7 +234,7 @@ FROM [$($Cfg.sql.schema)].[COMPROBANTEVDET]
 WHERE CODIGO = @id
 ORDER BY NROITEM
 "@
-  $items = @(Invoke-Sql -Cfg $Cfg -Query $qItems -Params @{ id = $Venta.Id } | ForEach-Object {
+  $items = @(Invoke-Sql -Cfg $Cfg -Database $Venta.Base -Query $qItems -Params @{ id = $Venta.Codigo } | ForEach-Object {
       [pscustomobject]@{
         articulo    = "$($_.articulo)".Trim()
         descripcion = "$($_.descripcion)".Trim()
@@ -217,7 +254,7 @@ WHERE COMP = @id
 GROUP BY LTRIM(RTRIM(ISNULL(VALOR,'')))
 ORDER BY SUM(MONTO) DESC
 "@
-  $pagos = @(Invoke-Sql -Cfg $Cfg -Query $qPagos -Params @{ id = $Venta.Id } | ForEach-Object {
+  $pagos = @(Invoke-Sql -Cfg $Cfg -Database $Venta.Base -Query $qPagos -Params @{ id = $Venta.Codigo } | ForEach-Object {
       $codigo = "$($_.codigo)".Trim()
       [pscustomobject]@{
         codigo = $codigo
@@ -313,6 +350,14 @@ function ConvertTo-Ultimos4 {
   return $null
 }
 
+function ConvertTo-SistemaVentaNormalizado {
+  param([string]$Texto)
+  $t = "$Texto".Trim().ToLowerInvariant()
+  if ($t -eq 'black') { return 'black' }
+  if ($t -eq 'formen') { return 'formen' }
+  return $t
+}
+
 function Get-Ultimos4Comprobante {
   param($Venta)
   return ConvertTo-Ultimos4 $Venta.Comprobante
@@ -338,11 +383,33 @@ function Get-ComprobanteContacto {
   return $null
 }
 
+function Get-SistemaVentaContacto {
+  param($Cfg, $Contacto)
+
+  $fieldId = if ($Cfg.match.sistemaVentaFieldId) { [int64]$Cfg.match.sistemaVentaFieldId } else { $null }
+  $fieldName = if ($Cfg.match.sistemaVentaFieldName) { "$($Cfg.match.sistemaVentaFieldName)" } else { $null }
+  if (-not $fieldId -and -not $fieldName) { return $null }
+
+  foreach ($f in @($Contacto.custom_fields_values)) {
+    $porId = ($fieldId -and [int64]$f.field_id -eq $fieldId)
+    $porNombre = ($fieldName -and "$($f.field_name)" -eq $fieldName)
+    if ($porId -or $porNombre) {
+      foreach ($v in @($f.values)) {
+        $sistema = ConvertTo-SistemaVentaNormalizado "$($v.value)"
+        if ($sistema) { return $sistema }
+      }
+    }
+  }
+  return $null
+}
+
 function Select-CandidatosParaVenta {
   param($Cfg, $Venta, $Candidatos)
 
   $esperado = Get-Ultimos4Comprobante $Venta
   $campoActivo = ($Cfg.match.comprobanteUltimos4FieldId -or $Cfg.match.comprobanteUltimos4FieldName)
+  $sistemaEsperado = ConvertTo-SistemaVentaNormalizado $Venta.Sistema
+  $sistemaActivo = ($Cfg.match.sistemaVentaFieldId -or $Cfg.match.sistemaVentaFieldName)
   if (-not $campoActivo -or -not $esperado) {
     return [pscustomobject]@{
       candidatos  = @($Candidatos)
@@ -361,6 +428,17 @@ function Select-CandidatosParaVenta {
     if (-not $informado) {
       $sinCampo += $c
     } elseif ($informado -eq $esperado) {
+      if ($sistemaActivo -and $sistemaEsperado) {
+        $sistemaInformado = Get-SistemaVentaContacto -Cfg $Cfg -Contacto $c
+        if (-not $sistemaInformado) {
+          $sinCampo += $c
+          continue
+        }
+        if ($sistemaInformado -ne $sistemaEsperado) {
+          $descartados += [pscustomobject]@{ id = $c.id; informado = $informado; sistema = $sistemaInformado }
+          continue
+        }
+      }
       $exactos += $c
     } else {
       $descartados += [pscustomobject]@{ id = $c.id; informado = $informado }
@@ -582,6 +660,7 @@ function New-TextoNota {
   $total = ConvertTo-MontoTexto $Venta.Total
   $lineas = @(
     'Compra en el local',
+    "Sistema: $($Venta.Sistema)",
     "Comprobante: $($Venta.Comprobante)",
     "Fecha: $($Venta.Ts.ToString('dd/MM/yyyy HH:mm'))",
     "Total: $total"
@@ -720,6 +799,8 @@ function Add-Registro {
     ts          = (Get-Date).ToString('o')
     resultado   = $Resultado
     venta       = $Venta.Comprobante
+    sistema     = $Venta.Sistema
+    base        = $Venta.Base
     venta_ts    = $Venta.Ts.ToString('o')
     total       = $Venta.Total
     candidatos  = @($Candidatos | ForEach-Object { $_.id })

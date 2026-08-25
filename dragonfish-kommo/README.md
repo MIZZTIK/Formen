@@ -19,10 +19,12 @@ un cursor (`data/cursor.json`) para no reprocesar ventas.
 
 La venta no identifica al comprador (ver el relevamiento más abajo), así que la
 llave operativa sale del formulario de Kommo que se completa al cobrar: últimos
-4 dígitos del comprobante, más una ventana corta de tiempo. Con el campo de
-comprobante activo, el conector solo asocia si el contacto de la ventana trae
-esos 4 dígitos y coinciden con la venta. **Uno solo → se asocia. Dos o más → no
-se adivina, queda sin asociar. Ninguno con comprobante coincidente → no escribe.**
+4 dígitos del comprobante, sistema de venta (`Black` / `Formen`) y una ventana
+corta de tiempo. Con el campo de comprobante activo, el conector solo asocia si
+el contacto de la ventana trae esos 4 dígitos y coinciden con la venta. Si está
+configurado el campo de sistema, también exige que coincida con la base de
+Dragonfish. **Uno solo → se asocia. Dos o más → no se adivina, queda sin
+asociar. Ninguno con comprobante coincidente → no escribe.**
 
 ## Requisitos
 
@@ -146,6 +148,14 @@ dígitos del comprobante. Con `comprobanteUltimos4FieldName` o
 pasa a exacto dentro de la ventana. El fallback por tiempo queda apagado por
 defecto (`permitirFallbackTemporalSinComprobante: false`) para evitar que una
 venta se cuelgue del contacto siguiente si falta el número.
+
+El 25/8 se confirmó que `Black` y `Formen` no son solo cajas: son bases distintas
+en el SQL Server local (`DRAGONFISH_BLACK` y `DRAGONFISH_FORMEN`). El conector
+soporta `sql.databases` para leer ambas, marca cada venta con el sistema según
+la base de origen y puede comparar ese dato contra el campo `Sistema de venta`
+del formulario (`sistemaVentaFieldName` / `sistemaVentaFieldId`). Black aparece
+como `FACTTIPO=1` y Formen como `FACTTIPO=2`, así que producción necesita
+`tiposVenta: [1, 2]`.
 
 ### 2e. Exploración del 24/8: recibo, productos y medios de pago
 

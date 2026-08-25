@@ -2,6 +2,7 @@
   "sql": {
     "server": "localhost\\ZOOLOGIC",
     "database": "DRAGONFISH_FORMEN",
+    "databases": ["DRAGONFISH_FORMEN", "DRAGONFISH_BLACK"],
     "schema": "ZooLogic",
     "user": "",
     "password": ""
@@ -20,6 +21,8 @@
     "etiqueta": "local",
     "comprobanteUltimos4FieldId": null,
     "comprobanteUltimos4FieldName": "",
+    "sistemaVentaFieldId": null,
+    "sistemaVentaFieldName": "",
     "permitirFallbackTemporalSinComprobante": false
   },
 
@@ -44,7 +47,7 @@
     "fallosSeguidosParaAvisar": 3
   },
 
-  "tiposVenta": [2],
+  "tiposVenta": [1, 2],
   "dryRun": true,
   "intervaloSeg": 300
 }
