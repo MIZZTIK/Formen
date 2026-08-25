@@ -597,8 +597,34 @@ function Get-BoolConfig {
   return [bool]$v
 }
 
+function ConvertTo-EnteroKommo {
+  param($Valor)
+
+  if ($null -eq $Valor -or $Valor -is [DBNull]) { return $null }
+  try {
+    return [int64][math]::Round([decimal]$Valor)
+  } catch {}
+
+  $texto = "$Valor".Trim()
+  if (-not $texto) { return $null }
+
+  $num = [decimal]0
+  $estilos = [System.Globalization.NumberStyles]::Any
+  $culturas = @(
+    [System.Globalization.CultureInfo]::GetCultureInfo('es-AR'),
+    [System.Globalization.CultureInfo]::GetCultureInfo('en-US'),
+    [System.Globalization.CultureInfo]::InvariantCulture
+  )
+  foreach ($cultura in $culturas) {
+    if ([decimal]::TryParse($texto, $estilos, $cultura, [ref]$num)) {
+      return [int64][math]::Round($num)
+    }
+  }
+  return $null
+}
+
 function Update-LeadCompraKommo {
-  param($Cfg, [int64]$ContactoId, $Venta)
+  param($Cfg, [int64]$ContactoId, $Venta, [string]$NombreContacto = '')
 
   $leadCfg = Get-ConfigLeadCompra -Cfg $Cfg
   if (-not $leadCfg) { return }
@@ -614,10 +640,20 @@ function Update-LeadCompraKommo {
     $nombre = "Compra $($Venta.Comprobante)"
     if ($Venta.Sistema) { $nombre += " - $($Venta.Sistema)" }
     $body.name = Remove-Emojis $nombre
+  } elseif (Get-BoolConfig -Objeto $leadCfg -Nombre 'normalizarNombreGenerico' -Default $true) {
+    $nombreContactoLimpio = "$NombreContacto".Trim()
+    if ($nombreContactoLimpio) {
+      $leadActual = Invoke-Kommo -Cfg $Cfg -Metodo 'GET' -Ruta "/api/v4/leads/$leadId"
+      $nombreLead = "$($leadActual.name)".Trim()
+      if (-not $nombreLead -or $nombreLead -match '^Lead #\d+$') {
+        $body.name = Remove-Emojis $nombreContactoLimpio
+      }
+    }
   }
 
   if ((Get-BoolConfig -Objeto $leadCfg -Nombre 'actualizarPresupuesto' -Default $true) -and $null -ne $Venta.Total) {
-    $body.price = [int][math]::Round([decimal]$Venta.Total)
+    $precio = ConvertTo-EnteroKommo $Venta.Total
+    if ($null -ne $precio) { $body.price = $precio }
   }
 
   if ($body.Count -eq 0) { return }
@@ -1125,7 +1161,7 @@ function Invoke-Pasada {
               Write-Log 'warn' "No se pudieron actualizar campos de compra en contacto $($destino.id): $($_.Exception.Message)"
             }
             try {
-              Update-LeadCompraKommo -Cfg $Cfg -ContactoId $destino.id -Venta $venta
+              Update-LeadCompraKommo -Cfg $Cfg -ContactoId $destino.id -Venta $venta -NombreContacto $destino.name
             } catch {
               Write-Log 'warn' "No se pudo actualizar el lead de compra para contacto $($destino.id): $($_.Exception.Message)"
             }

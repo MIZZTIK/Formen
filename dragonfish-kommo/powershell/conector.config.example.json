@@ -49,6 +49,7 @@
   "leadCompra": {
     "habilitado": false,
     "actualizarNombre": false,
+    "normalizarNombreGenerico": true,
     "actualizarPresupuesto": true
   },
 
