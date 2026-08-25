@@ -279,7 +279,7 @@ function Invoke-Kommo {
   # Ojo: no usar $args, que es una variable automatica de PowerShell.
   $req = @{ Uri = $url; Method = $Metodo; Headers = $headers; TimeoutSec = 30 }
   if ($Cuerpo) {
-    $req.Body = ($Cuerpo | ConvertTo-Json -Depth 6 -Compress)
+    $req.Body = ConvertTo-Json -InputObject $Cuerpo -Depth 6 -Compress
     $req.ContentType = 'application/json'
   }
   try {
