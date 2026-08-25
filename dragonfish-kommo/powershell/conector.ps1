@@ -588,6 +588,32 @@ function Get-LeadParaContacto {
   return [int64](@($leads | Sort-Object id -Descending | Select-Object -First 1)[0].id)
 }
 
+function Resolve-LeadCompraDestino {
+  param($Cfg, $ContactoDestino, $ContactoCandidato)
+
+  $leadId = Get-LeadParaContacto -Cfg $Cfg -ContactoId ([int64]$ContactoDestino.id)
+  if ($leadId) {
+    return [pscustomobject]@{
+      LeadId   = $leadId
+      Contacto = $ContactoDestino
+    }
+  }
+
+  if ($ContactoCandidato -and ([int64]$ContactoCandidato.id -ne [int64]$ContactoDestino.id)) {
+    $leadId = Get-LeadParaContacto -Cfg $Cfg -ContactoId ([int64]$ContactoCandidato.id)
+    if ($leadId) {
+      Write-Log 'info' ("Contacto $($ContactoDestino.id) no tiene lead; " +
+        "compra/productos van al lead del contacto $($ContactoCandidato.id).")
+      return [pscustomobject]@{
+        LeadId   = $leadId
+        Contacto = $ContactoCandidato
+      }
+    }
+  }
+
+  return $null
+}
+
 function Get-ConfigLeadCompra {
   param($Cfg)
   $c = Get-PropValor -Objeto $Cfg -Nombre 'leadCompra'
@@ -1423,13 +1449,23 @@ function Invoke-Pasada {
             } catch {
               Write-Log 'warn' "No se pudieron actualizar campos de compra en contacto $($destino.id): $($_.Exception.Message)"
             }
+            $leadDestino = $null
             try {
-              Update-LeadCompraKommo -Cfg $Cfg -ContactoId $destino.id -Venta $venta -NombreContacto $destino.name
+              $leadDestino = Resolve-LeadCompraDestino -Cfg $Cfg -ContactoDestino $destino -ContactoCandidato $c
+              if ($leadDestino) {
+                Update-LeadCompraPorIdKommo -Cfg $Cfg -LeadId $leadDestino.LeadId -Venta $venta -NombreContacto $leadDestino.Contacto.name
+              } else {
+                Write-Log 'warn' "Contacto $($destino.id): no tiene lead vinculado para actualizar datos de compra."
+              }
             } catch {
               Write-Log 'warn' "No se pudo actualizar el lead de compra para contacto $($destino.id): $($_.Exception.Message)"
             }
             try {
-              Sync-ProductosKommo -Cfg $Cfg -ContactoId $destino.id -Detalle $detalle
+              if ($leadDestino) {
+                Sync-ProductosLeadKommo -Cfg $Cfg -LeadId $leadDestino.LeadId -Detalle $detalle
+              } else {
+                Write-Log 'warn' "Contacto $($destino.id): no tiene lead vinculado para cargar productos."
+              }
             } catch {
               Write-Log 'warn' "No se pudieron cargar productos en Kommo para contacto $($destino.id): $($_.Exception.Message)"
             }
