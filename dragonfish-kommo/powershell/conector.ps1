@@ -34,6 +34,7 @@ $CursorFile = Join-Path $DataDir 'cursor.json'
 $DetalleFile = Join-Path $DataDir 'reporte.jsonl'
 $ResumenFile = Join-Path $DataDir 'reporte.json'
 $LogFile = Join-Path $DataDir 'conector.log'
+$ProductosCacheFile = Join-Path $DataDir 'productos-kommo.json'
 
 # ── Utilidades ───────────────────────────────────────────────────────────────
 
@@ -538,6 +539,150 @@ function Get-PropValor {
   return $null
 }
 
+function Get-ProductosCache {
+  $cache = @{}
+  if (-not (Test-Path $ProductosCacheFile)) { return $cache }
+  try {
+    $json = Get-Content $ProductosCacheFile -Raw -Encoding utf8 | ConvertFrom-Json
+    foreach ($p in @($json.PSObject.Properties)) {
+      $cache[$p.Name] = [int64]$p.Value
+    }
+  } catch {
+    Write-Log 'warn' "No se pudo leer cache de productos Kommo: $($_.Exception.Message)"
+  }
+  return $cache
+}
+
+function Save-ProductosCache {
+  param([hashtable]$Cache)
+  New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
+  $o = [ordered]@{}
+  foreach ($k in @($Cache.Keys | Sort-Object)) {
+    $o[$k] = $Cache[$k]
+  }
+  $o | ConvertTo-Json -Depth 4 | Out-File $ProductosCacheFile -Encoding utf8
+}
+
+function Get-ConfigProductos {
+  param($Cfg)
+  $p = Get-PropValor -Objeto $Cfg -Nombre 'productos'
+  if (-not $p) { return $null }
+  if (-not $p.habilitado) { return $null }
+  if (-not $p.catalogId) {
+    throw 'productos.habilitado=true pero falta productos.catalogId'
+  }
+  return $p
+}
+
+function Get-LeadParaContacto {
+  param($Cfg, [int64]$ContactoId)
+  $r = Invoke-Kommo -Cfg $Cfg -Metodo 'GET' -Ruta "/api/v4/contacts/$ContactoId?with=leads"
+  $leads = @($r._embedded.leads)
+  if ($leads.Count -eq 0) { return $null }
+  return [int64](@($leads | Sort-Object id -Descending | Select-Object -First 1)[0].id)
+}
+
+function Get-ClaveProductoKommo {
+  param($Item)
+  $partes = @(
+    "$($Item.articulo)".Trim().ToLowerInvariant(),
+    "$($Item.descripcion)".Trim().ToLowerInvariant(),
+    "$($Item.talle)".Trim().ToLowerInvariant(),
+    "$($Item.color)".Trim().ToLowerInvariant()
+  )
+  return ($partes -join '|')
+}
+
+function Get-NombreProductoKommo {
+  param($Item)
+  $art = "$($Item.articulo)".Trim()
+  $desc = "$($Item.descripcion)".Trim()
+  $nombre = if ($desc) { $desc } elseif ($art) { $art } else { 'Producto sin descripcion' }
+  if ($art -and $nombre -notmatch [regex]::Escape($art)) {
+    $nombre = "$nombre ($art)"
+  }
+  $extra = @()
+  if ($Item.talle) { $extra += "talle $($Item.talle)" }
+  if ($Item.color) { $extra += "color $($Item.color)" }
+  if ($extra.Count -gt 0) { $nombre += ' ' + ($extra -join ' ') }
+  $nombre = Remove-Emojis $nombre
+  if ($nombre.Length -gt 240) { $nombre = $nombre.Substring(0, 240) }
+  return $nombre
+}
+
+function Resolve-ProductoCatalogoKommo {
+  param($Cfg, [int64]$CatalogId, $Item, [hashtable]$Cache)
+
+  $clave = Get-ClaveProductoKommo $Item
+  if ($Cache.ContainsKey($clave)) { return [int64]$Cache[$clave] }
+
+  $nombre = Get-NombreProductoKommo $Item
+  try {
+    $q = [uri]::EscapeDataString($nombre)
+    $r = Invoke-Kommo -Cfg $Cfg -Metodo 'GET' -Ruta "/api/v4/catalogs/$CatalogId/elements?query=$q&limit=10"
+    foreach ($e in @($r._embedded.elements)) {
+      if ("$($e.name)" -eq $nombre) {
+        $Cache[$clave] = [int64]$e.id
+        return [int64]$e.id
+      }
+    }
+  } catch {
+    Write-Log 'debug' "No se pudo buscar producto en Kommo ($nombre): $($_.Exception.Message)"
+  }
+
+  $cuerpo = @(@{ name = $nombre })
+  $creado = Invoke-Kommo -Cfg $Cfg -Metodo 'POST' -Ruta "/api/v4/catalogs/$CatalogId/elements" -Cuerpo $cuerpo
+  $elemento = @($creado._embedded.elements)[0]
+  if (-not $elemento) { throw "Kommo no devolvio el producto creado: $nombre" }
+  $Cache[$clave] = [int64]$elemento.id
+  return [int64]$elemento.id
+}
+
+function Add-ProductoALeadKommo {
+  param($Cfg, [int64]$LeadId, [int64]$CatalogId, [int64]$ProductoId, [int]$Cantidad)
+
+  $cant = [math]::Max(1, $Cantidad)
+  $cuerpo = @(@{
+      to_entity_id   = $ProductoId
+      to_entity_type = 'catalog_elements'
+      metadata       = @{
+        quantity   = $cant
+        catalog_id = $CatalogId
+      }
+    })
+  [void](Invoke-Kommo -Cfg $Cfg -Metodo 'POST' -Ruta "/api/v4/leads/$LeadId/link" -Cuerpo $cuerpo)
+}
+
+function Sync-ProductosKommo {
+  param($Cfg, [int64]$ContactoId, $Detalle)
+
+  $prodCfg = Get-ConfigProductos -Cfg $Cfg
+  if (-not $prodCfg) { return }
+  if (-not $Detalle -or $Detalle.items.Count -eq 0) { return }
+
+  $leadId = Get-LeadParaContacto -Cfg $Cfg -ContactoId $ContactoId
+  if (-not $leadId) {
+    Write-Log 'warn' "Contacto ${ContactoId}: no tiene lead vinculado para cargar productos."
+    return
+  }
+
+  $catalogId = [int64]$prodCfg.catalogId
+  $cache = Get-ProductosCache
+  $vinculados = 0
+  foreach ($it in @($Detalle.items)) {
+    $nombreBase = if ($it.descripcion) { $it.descripcion } else { $it.articulo }
+    if (-not $nombreBase) { continue }
+    $productoId = Resolve-ProductoCatalogoKommo -Cfg $Cfg -CatalogId $catalogId -Item $it -Cache $cache
+    $cantidad = if ($null -ne $it.cantidad) { [int][math]::Round([decimal]$it.cantidad) } else { 1 }
+    Add-ProductoALeadKommo -Cfg $Cfg -LeadId $leadId -CatalogId $catalogId -ProductoId $productoId -Cantidad $cantidad
+    $vinculados++
+  }
+  Save-ProductosCache -Cache $cache
+  if ($vinculados -gt 0) {
+    Write-Log 'info' "Lead ${leadId}: $vinculados producto(s) vinculados en Kommo."
+  }
+}
+
 $script:CamposContactoKommo = $null
 
 function Get-CamposContactoKommo {
@@ -935,6 +1080,11 @@ function Invoke-Pasada {
               Update-CamposCompraKommo -Cfg $Cfg -ContactoId $destino.id -Venta $venta -Detalle $detalle
             } catch {
               Write-Log 'warn' "No se pudieron actualizar campos de compra en contacto $($destino.id): $($_.Exception.Message)"
+            }
+            try {
+              Sync-ProductosKommo -Cfg $Cfg -ContactoId $destino.id -Detalle $detalle
+            } catch {
+              Write-Log 'warn' "No se pudieron cargar productos en Kommo para contacto $($destino.id): $($_.Exception.Message)"
             }
             Write-Log 'info' "$($venta.Comprobante) -> nota en contacto $($destino.id) ($($sel.modo), +$min min)"
           }

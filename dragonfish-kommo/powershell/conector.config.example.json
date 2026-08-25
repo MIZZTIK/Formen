@@ -41,6 +41,11 @@
     "ultimaCompraPagosFieldName": ""
   },
 
+  "productos": {
+    "habilitado": false,
+    "catalogId": null
+  },
+
   "avisos": {
     "telegramToken": "",
     "telegramChatId": "",

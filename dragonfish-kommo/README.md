@@ -201,6 +201,13 @@ compra" en el contacto, si están configurados en `camposCompra`:
 Estos campos se pisan con cada compra nueva. El historial completo queda como
 notas, una por compra.
 
+Si `productos.habilitado` está en `true`, el conector también carga las prendas
+en la pestaña **Products** del lead de Kommo. Usa el catálogo configurado en
+`productos.catalogId`, crea o reutiliza un producto por combinación de artículo,
+descripción, talle y color, y lo vincula al lead con la cantidad comprada. La
+nota sigue quedando como resumen legible; Products queda para seguimiento y
+segmentación dentro de Kommo.
+
 ### 3. Mapeo de la base, para cuando se destrabe
 
 Ventas: `ZooLogic.COMPROBANTEV` (cabecera) + `ZooLogic.COMPROBANTEVDET` (detalle).
