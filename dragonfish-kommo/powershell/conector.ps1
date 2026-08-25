@@ -130,9 +130,17 @@ function Get-VentasNuevas {
 
   $q = @"
 SELECT TOP (200)
-  CODIGO, FFCH, FTOTAL, FACTTIPO, FLETRA, FPTOVEN, FNUMCOMP, $ts AS TS
-FROM [$($Cfg.sql.schema)].[COMPROBANTEV]
-WHERE ANULADO = 0 $filtroTipo AND $ts > @desde
+  v.CODIGO,
+  v.FFCH,
+  COALESCE(
+    NULLIF(v.FTOTAL, 0),
+    NULLIF((SELECT SUM(d.MNTPTOT) FROM [$($Cfg.sql.schema)].[COMPROBANTEVDET] d WHERE d.CODIGO = v.CODIGO), 0),
+    NULLIF((SELECT SUM(c.MONTO) FROM [$($Cfg.sql.schema)].[CUPONES] c WHERE c.COMP = v.CODIGO), 0),
+    0
+  ) AS FTOTAL,
+  v.FACTTIPO, v.FLETRA, v.FPTOVEN, v.FNUMCOMP, $ts AS TS
+FROM [$($Cfg.sql.schema)].[COMPROBANTEV] v
+WHERE v.ANULADO = 0 $filtroTipo AND $ts > @desde
 ORDER BY $ts ASC
 "@
   $ventas = @()
@@ -1048,12 +1056,20 @@ function Get-VentasPorComandoSalesbot {
   $filtroTipo = if ($tipos) { " AND FACTTIPO IN ($tipos)" } else { '' }
   $q = @"
 SELECT TOP (5)
-  CODIGO, FFCH, FTOTAL, FACTTIPO, FLETRA, FPTOVEN, FNUMCOMP, $ts AS TS
-FROM [$($Cfg.sql.schema)].[COMPROBANTEV]
-WHERE ANULADO = 0
+  v.CODIGO,
+  v.FFCH,
+  COALESCE(
+    NULLIF(v.FTOTAL, 0),
+    NULLIF((SELECT SUM(d.MNTPTOT) FROM [$($Cfg.sql.schema)].[COMPROBANTEVDET] d WHERE d.CODIGO = v.CODIGO), 0),
+    NULLIF((SELECT SUM(c.MONTO) FROM [$($Cfg.sql.schema)].[CUPONES] c WHERE c.COMP = v.CODIGO), 0),
+    0
+  ) AS FTOTAL,
+  v.FACTTIPO, v.FLETRA, v.FPTOVEN, v.FNUMCOMP, $ts AS TS
+FROM [$($Cfg.sql.schema)].[COMPROBANTEV] v
+WHERE v.ANULADO = 0
   $filtroTipo
   AND $ts >= @desde
-  AND RIGHT('0000' + CONVERT(varchar(20), CONVERT(bigint, FNUMCOMP)), 4) = @ultimos4
+  AND RIGHT('0000' + CONVERT(varchar(20), CONVERT(bigint, v.FNUMCOMP)), 4) = @ultimos4
 ORDER BY $ts DESC
 "@
 
