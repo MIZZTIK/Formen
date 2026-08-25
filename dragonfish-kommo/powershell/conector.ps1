@@ -610,7 +610,7 @@ function Update-LeadCompraKommo {
   }
 
   $body = @{}
-  if (Get-BoolConfig -Objeto $leadCfg -Nombre 'actualizarNombre' -Default $true) {
+  if (Get-BoolConfig -Objeto $leadCfg -Nombre 'actualizarNombre' -Default $false) {
     $nombre = "Compra $($Venta.Comprobante)"
     if ($Venta.Sistema) { $nombre += " - $($Venta.Sistema)" }
     $body.name = Remove-Emojis $nombre

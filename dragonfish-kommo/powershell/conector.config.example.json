@@ -48,7 +48,7 @@
 
   "leadCompra": {
     "habilitado": false,
-    "actualizarNombre": true,
+    "actualizarNombre": false,
     "actualizarPresupuesto": true
   },
 
