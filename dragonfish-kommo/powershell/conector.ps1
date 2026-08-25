@@ -1171,8 +1171,8 @@ function Invoke-ComandosSalesbot {
       } else {
         $detalle = Get-DetalleVenta -Cfg $Cfg -Venta $venta
         [void](Add-NotaLeadKommo -Cfg $Cfg -LeadId $leadId -Texto (New-TextoNota -Venta $venta -Minutos 0 -Detalle $detalle -Origen 'manual'))
-        Update-LeadCompraPorIdKommo -Cfg $Cfg -LeadId $leadId -Venta $venta
         Sync-ProductosLeadKommo -Cfg $Cfg -LeadId $leadId -Detalle $detalle
+        Update-LeadCompraPorIdKommo -Cfg $Cfg -LeadId $leadId -Venta $venta
         Set-CampoLeadTextoKommo -Cfg $Cfg -LeadId $leadId -FieldId ([int64]$campoEstado.id) -Valor $estadoVinculado
       }
       $ok++
@@ -1488,13 +1488,11 @@ function Invoke-Pasada {
             $leadDestino = $null
             try {
               $leadDestino = Resolve-LeadCompraDestino -Cfg $Cfg -ContactoDestino $destino -ContactoCandidato $c
-              if ($leadDestino) {
-                Update-LeadCompraPorIdKommo -Cfg $Cfg -LeadId $leadDestino.LeadId -Venta $venta -NombreContacto $leadDestino.Contacto.name
-              } else {
+              if (-not $leadDestino) {
                 Write-Log 'warn' "Contacto $($destino.id): no tiene lead vinculado para actualizar datos de compra."
               }
             } catch {
-              Write-Log 'warn' "No se pudo actualizar el lead de compra para contacto $($destino.id): $($_.Exception.Message)"
+              Write-Log 'warn' "No se pudo resolver el lead de compra para contacto $($destino.id): $($_.Exception.Message)"
             }
             try {
               if ($leadDestino) {
@@ -1504,6 +1502,13 @@ function Invoke-Pasada {
               }
             } catch {
               Write-Log 'warn' "No se pudieron cargar productos en Kommo para contacto $($destino.id): $($_.Exception.Message)"
+            }
+            try {
+              if ($leadDestino) {
+                Update-LeadCompraPorIdKommo -Cfg $Cfg -LeadId $leadDestino.LeadId -Venta $venta -NombreContacto $leadDestino.Contacto.name
+              }
+            } catch {
+              Write-Log 'warn' "No se pudo actualizar el lead de compra para contacto $($destino.id): $($_.Exception.Message)"
             }
             Write-Log 'info' "$($venta.Comprobante) -> nota en contacto $($destino.id) ($($sel.modo), +$min min)"
           }
