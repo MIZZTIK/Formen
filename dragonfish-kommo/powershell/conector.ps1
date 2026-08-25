@@ -582,7 +582,7 @@ function Get-ConfigProductos {
 
 function Get-LeadParaContacto {
   param($Cfg, [int64]$ContactoId)
-  $r = Invoke-Kommo -Cfg $Cfg -Metodo 'GET' -Ruta "/api/v4/contacts/$ContactoId?with=leads"
+  $r = Invoke-Kommo -Cfg $Cfg -Metodo 'GET' -Ruta "/api/v4/contacts/${ContactoId}?with=leads"
   $leads = @($r._embedded.leads)
   if ($leads.Count -eq 0) { return $null }
   return [int64](@($leads | Sort-Object id -Descending | Select-Object -First 1)[0].id)
