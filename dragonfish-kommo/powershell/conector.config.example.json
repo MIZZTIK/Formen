@@ -19,7 +19,8 @@
     "preferirContactoExistente": true,
     "etiqueta": "local",
     "comprobanteUltimos4FieldId": null,
-    "comprobanteUltimos4FieldName": ""
+    "comprobanteUltimos4FieldName": "",
+    "permitirFallbackTemporalSinComprobante": false
   },
 
   "camposCompra": {

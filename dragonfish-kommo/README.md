@@ -17,11 +17,12 @@ SQL Server local  ──polling──►  conector.ps1  ──HTTPS──►  Ko
 Dragonfish **no emite webhooks**, por eso el conector consulta la base cada N minutos y usa
 un cursor (`data/cursor.json`) para no reprocesar ventas.
 
-**La llave es el tiempo, no el dato.** La venta no identifica al comprador (ver el
-relevamiento más abajo): el teléfono lo junta el iPad del local con un formulario de Kommo,
-que el vendedor pasa *después* de cobrar. Por eso el apareo es: para cada venta, buscar los
-contactos creados por el usuario del iPad en los N minutos siguientes. **Uno solo → se
-asocia. Dos o más → no se adivina, queda sin asociar.**
+La venta no identifica al comprador (ver el relevamiento más abajo), así que la
+llave operativa sale del formulario de Kommo que se completa al cobrar: últimos
+4 dígitos del comprobante, más una ventana corta de tiempo. Con el campo de
+comprobante activo, el conector solo asocia si el contacto de la ventana trae
+esos 4 dígitos y coinciden con la venta. **Uno solo → se asocia. Dos o más → no
+se adivina, queda sin asociar. Ninguno con comprobante coincidente → no escribe.**
 
 ## Requisitos
 
@@ -139,9 +140,12 @@ usable hacia Kommo. Si una venta queda como encargo, ese dato no aparece en las
 tablas obvias de taller y la ficha `CLI` tampoco tiene teléfono. El formulario
 de Kommo sigue siendo la llave principal.
 
-El siguiente refuerzo es pedir en el formulario un campo opcional con los
-últimos 4 dígitos del comprobante. Si el cliente lo carga, el apareo deja de ser
-solo temporal y pasa a exacto dentro de la ventana.
+El siguiente refuerzo fue pedir en el formulario un campo con los últimos 4
+dígitos del comprobante. Con `comprobanteUltimos4FieldName` o
+`comprobanteUltimos4FieldId` configurado, el apareo deja de ser solo temporal y
+pasa a exacto dentro de la ventana. El fallback por tiempo queda apagado por
+defecto (`permitirFallbackTemporalSinComprobante: false`) para evitar que una
+venta se cuelgue del contacto siguiente si falta el número.
 
 ### 2e. Exploración del 24/8: recibo, productos y medios de pago
 

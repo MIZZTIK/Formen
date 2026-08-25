@@ -238,19 +238,29 @@ function Invoke-Kommo {
   param($Cfg, [string]$Metodo, [string]$Ruta, $Cuerpo = $null)
 
   $url = "https://$($Cfg.kommo.subdominio).kommo.com$Ruta"
-  $headers = @{ Authorization = "Bearer $($Cfg.kommo.token)" }
+  $headers = @{ Authorization = "Bearer $($Cfg.kommo.token)"; Accept = 'application/json' }
   # Ojo: no usar $args, que es una variable automatica de PowerShell.
   $req = @{ Uri = $url; Method = $Metodo; Headers = $headers; TimeoutSec = 30 }
   if ($Cuerpo) {
     $req.Body = ($Cuerpo | ConvertTo-Json -Depth 6 -Compress)
-    $req.ContentType = 'application/json; charset=utf-8'
+    $req.ContentType = 'application/json'
   }
   try {
     return Invoke-RestMethod @req
   } catch {
-    $code = $_.Exception.Response.StatusCode.value__
+    $code = if ($_.Exception.Response) { $_.Exception.Response.StatusCode.value__ } else { 'sin_codigo' }
+    $detalle = ''
+    try {
+      $stream = $_.Exception.Response.GetResponseStream()
+      if ($stream) {
+        $reader = New-Object System.IO.StreamReader($stream)
+        $detalle = $reader.ReadToEnd()
+      }
+    } catch {}
     if ($code -eq 204) { return $null }   # sin resultados
-    throw "Kommo $Metodo $Ruta -> $code : $($_.Exception.Message)"
+    $msg = "Kommo $Metodo $Ruta -> $code : $($_.Exception.Message)"
+    if ($detalle) { $msg += " : $detalle" }
+    throw $msg
   }
 }
 
@@ -339,6 +349,7 @@ function Select-CandidatosParaVenta {
       modo        = 'tiempo'
       esperado    = $esperado
       descartados = @()
+      sinCampo    = @()
     }
   }
 
@@ -362,6 +373,18 @@ function Select-CandidatosParaVenta {
       modo        = 'comprobante'
       esperado    = $esperado
       descartados = @($descartados)
+      sinCampo    = @($sinCampo)
+    }
+  }
+
+  $fallbackTemporal = Get-PropValor -Objeto $Cfg.match -Nombre 'permitirFallbackTemporalSinComprobante'
+  if (-not $fallbackTemporal) {
+    return [pscustomobject]@{
+      candidatos  = @()
+      modo        = 'comprobante'
+      esperado    = $esperado
+      descartados = @($descartados)
+      sinCampo    = @($sinCampo)
     }
   }
 
@@ -370,6 +393,7 @@ function Select-CandidatosParaVenta {
     modo        = 'tiempo'
     esperado    = $esperado
     descartados = @($descartados)
+    sinCampo    = @($sinCampo)
   }
 }
 
@@ -781,10 +805,10 @@ function Invoke-Pasada {
 
       if ($cand.Count -eq 0) {
         $stats.sin_candidato++
-        if ($todos.Count -gt 0 -and $sel.descartados.Count -gt 0) {
+        if ($todos.Count -gt 0 -and ($sel.descartados.Count -gt 0 -or $sel.sinCampo.Count -gt 0)) {
           Write-Log 'debug' "Venta $($venta.Comprobante): contactos en ventana, pero ninguno con comprobante $($sel.esperado)."
           Add-Registro -Resultado 'sin_candidato' -Venta $venta -Candidatos $todos `
-            -Extra @{ motivo = 'comprobante_no_coincide'; comprobante_ultimos4 = $sel.esperado; descartados = $sel.descartados }
+            -Extra @{ motivo = 'comprobante_no_coincide'; comprobante_ultimos4 = $sel.esperado; descartados = $sel.descartados; sin_campo = @($sel.sinCampo | ForEach-Object { $_.id }) }
         } else {
           Write-Log 'debug' "Venta $($venta.Comprobante): sin contacto en la ventana."
           Add-Registro -Resultado 'sin_candidato' -Venta $venta -Candidatos @()
