@@ -248,6 +248,7 @@ ORDER BY NROITEM
         articulo    = "$($_.articulo)".Trim()
         descripcion = "$($_.descripcion)".Trim()
         cantidad    = if ($_.cantidad -is [DBNull]) { $null } else { [decimal]$_.cantidad }
+        precio      = if ($_.precio_unitario -is [DBNull]) { $null } else { [decimal]$_.precio_unitario }
         total       = if ($_.total_item -is [DBNull]) { $null } else { [decimal]$_.total_item }
         talle       = "$($_.talle)".Trim()
         color       = "$($_.color)".Trim()
@@ -757,6 +758,91 @@ function Get-NombreProductoKommo {
   return $nombre
 }
 
+$script:CamposCatalogoKommo = @{}
+
+function Get-CamposCatalogoKommo {
+  param($Cfg, [int64]$CatalogId)
+
+  $key = "$CatalogId"
+  if ($script:CamposCatalogoKommo.ContainsKey($key)) { return $script:CamposCatalogoKommo[$key] }
+  $r = Invoke-Kommo -Cfg $Cfg -Metodo 'GET' -Ruta "/api/v4/catalogs/$CatalogId/custom_fields?limit=250"
+  $script:CamposCatalogoKommo[$key] = @($r._embedded.custom_fields)
+  return $script:CamposCatalogoKommo[$key]
+}
+
+function Resolve-CampoCatalogoKommo {
+  param($Cfg, [int64]$CatalogId, [Nullable[int64]]$FieldId, [string]$FieldName, [string[]]$FallbackNames = @())
+
+  $campos = Get-CamposCatalogoKommo -Cfg $Cfg -CatalogId $CatalogId
+  if ($FieldId) {
+    $porId = @($campos | Where-Object { [int64]$_.id -eq [int64]$FieldId } | Select-Object -First 1)[0]
+    if ($porId) { return $porId }
+    return [pscustomobject]@{ id = [int64]$FieldId; name = $FieldName; type = '' }
+  }
+
+  $nombres = @()
+  if ($FieldName) { $nombres += $FieldName }
+  $nombres += @($FallbackNames)
+  foreach ($nombre in $nombres) {
+    if (-not $nombre) { continue }
+    $porNombre = @($campos | Where-Object { "$($_.name)" -eq "$nombre" } | Select-Object -First 1)[0]
+    if ($porNombre) { return $porNombre }
+  }
+
+  return $null
+}
+
+function Get-DefinicionesCamposProducto {
+  param($ProdCfg, $Item)
+
+  return @(
+    @{ clave = 'codigo'; id = 'codigoFieldId'; nombre = 'codigoFieldName'; valor = $Item.articulo; fallback = @('Codigo', 'Código', 'Articulo', 'Artículo', 'SKU') },
+    @{ clave = 'descripcion'; id = 'descripcionFieldId'; nombre = 'descripcionFieldName'; valor = $Item.descripcion; fallback = @('Descripcion', 'Descripción', 'Description') },
+    @{ clave = 'talle'; id = 'talleFieldId'; nombre = 'talleFieldName'; valor = $Item.talle; fallback = @('Talle', 'Talla', 'Size') },
+    @{ clave = 'color'; id = 'colorFieldId'; nombre = 'colorFieldName'; valor = $Item.color; fallback = @('Color') },
+    @{ clave = 'precio'; id = 'precioFieldId'; nombre = 'precioFieldName'; valor = $Item.precio; fallback = @('Precio', 'Price') }
+  ) | ForEach-Object {
+    $fieldId = Get-PropValor -Objeto $ProdCfg -Nombre $_.id
+    $fieldName = Get-PropValor -Objeto $ProdCfg -Nombre $_.nombre
+    [pscustomobject]@{
+      clave     = $_.clave
+      fieldId   = if ($fieldId) { [int64]$fieldId } else { $null }
+      fieldName = if ($fieldName) { "$fieldName" } else { '' }
+      fallback  = $_.fallback
+      valor     = $_.valor
+    }
+  }
+}
+
+function Update-ProductoCatalogoKommo {
+  param($Cfg, [int64]$CatalogId, [int64]$ProductoId, $Item, $ProdCfg)
+
+  if ($null -eq (Get-PropValor -Objeto $ProdCfg -Nombre 'actualizarCampos')) {
+    $actualizarCampos = $true
+  } else {
+    $actualizarCampos = [bool](Get-PropValor -Objeto $ProdCfg -Nombre 'actualizarCampos')
+  }
+  if (-not $actualizarCampos) { return }
+
+  $customFields = @()
+  foreach ($d in @(Get-DefinicionesCamposProducto -ProdCfg $ProdCfg -Item $Item)) {
+    if ($null -eq $d.valor -or "$($d.valor)" -eq '') { continue }
+    $campo = Resolve-CampoCatalogoKommo -Cfg $Cfg -CatalogId $CatalogId -FieldId $d.fieldId -FieldName $d.fieldName -FallbackNames $d.fallback
+    if (-not $campo) { continue }
+
+    $valor = ConvertTo-ValorCampoKommo -Campo $campo -Valor $d.valor
+    if ($null -eq $valor -or "$valor" -eq '') { continue }
+    $customFields += @{
+      field_id = [int64]$campo.id
+      values   = @(@{ value = $valor })
+    }
+  }
+
+  if ($customFields.Count -eq 0) { return }
+  $cuerpo = @{ custom_fields_values = $customFields }
+  [void](Invoke-Kommo -Cfg $Cfg -Metodo 'PATCH' -Ruta "/api/v4/catalogs/$CatalogId/elements/$ProductoId" -Cuerpo $cuerpo)
+}
+
 function Resolve-ProductoCatalogoKommo {
   param($Cfg, [int64]$CatalogId, $Item, [hashtable]$Cache)
 
@@ -830,6 +916,11 @@ function Sync-ProductosLeadKommo {
     $nombreBase = if ($it.descripcion) { $it.descripcion } else { $it.articulo }
     if (-not $nombreBase) { continue }
     $productoId = Resolve-ProductoCatalogoKommo -Cfg $Cfg -CatalogId $catalogId -Item $it -Cache $cache
+    try {
+      Update-ProductoCatalogoKommo -Cfg $Cfg -CatalogId $catalogId -ProductoId $productoId -Item $it -ProdCfg $prodCfg
+    } catch {
+      Write-Log 'warn' "No se pudieron actualizar datos del producto $productoId en Kommo: $($_.Exception.Message)"
+    }
     $cantidad = if ($null -ne $it.cantidad) { [int][math]::Round([decimal]$it.cantidad) } else { 1 }
     Add-ProductoALeadKommo -Cfg $Cfg -LeadId $leadId -CatalogId $catalogId -ProductoId $productoId -Cantidad $cantidad
     $vinculados++
@@ -872,7 +963,7 @@ function ConvertTo-ValorCampoKommo {
     }
     return [int64]$Valor
   }
-  if ($tipo -match 'numeric|monetary') {
+  if ($tipo -match 'numeric|monetary|price') {
     return [decimal]$Valor
   }
   if ($Valor -is [datetime]) { return $Valor.ToString('dd/MM/yyyy HH:mm') }

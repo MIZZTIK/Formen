@@ -208,6 +208,24 @@ descripción, talle y color, y lo vincula al lead con la cantidad comprada. La
 nota sigue quedando como resumen legible; Products queda para seguimiento y
 segmentación dentro de Kommo.
 
+Si el catálogo tiene campos compatibles, el conector también intenta completar
+datos del producto: código, descripción, talle, color y precio unitario. Puede
+detectarlos por nombres comunes (`Precio`, `Código`, `Talle`, `Color`) o recibir
+los IDs explícitos en `productos`:
+
+```json
+"productos": {
+  "habilitado": true,
+  "catalogId": 12088,
+  "actualizarCampos": true,
+  "precioFieldName": "Precio",
+  "codigoFieldName": "Código",
+  "descripcionFieldName": "Descripción",
+  "talleFieldName": "Talle",
+  "colorFieldName": "Color"
+}
+```
+
 ### 3. Mapeo de la base, para cuando se destrabe
 
 Ventas: `ZooLogic.COMPROBANTEV` (cabecera) + `ZooLogic.COMPROBANTEVDET` (detalle).
