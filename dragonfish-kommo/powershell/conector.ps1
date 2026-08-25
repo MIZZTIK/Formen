@@ -676,6 +676,7 @@ function Update-LeadCompraPorIdKommo {
   $leadCfg = if ($LeadCfg) { $LeadCfg } else { Get-ConfigLeadCompra -Cfg $Cfg }
   if (-not $leadCfg) { return }
   $body = @{}
+  $precioEsperado = $null
   if (Get-BoolConfig -Objeto $leadCfg -Nombre 'actualizarNombre' -Default $false) {
     $nombre = "Compra $($Venta.Comprobante)"
     if ($Venta.Sistema) { $nombre += " - $($Venta.Sistema)" }
@@ -683,7 +684,7 @@ function Update-LeadCompraPorIdKommo {
   } elseif (Get-BoolConfig -Objeto $leadCfg -Nombre 'normalizarNombreGenerico' -Default $true) {
     $nombreContactoLimpio = "$NombreContacto".Trim()
     if ($nombreContactoLimpio) {
-      $leadActual = Invoke-Kommo -Cfg $Cfg -Metodo 'GET' -Ruta "/api/v4/leads/$leadId"
+      $leadActual = Invoke-Kommo -Cfg $Cfg -Metodo 'GET' -Ruta "/api/v4/leads/$LeadId"
       $nombreLead = "$($leadActual.name)".Trim()
       if (-not $nombreLead -or $nombreLead -match '^Lead #\d+$') {
         $body.name = Remove-Emojis $nombreContactoLimpio
@@ -693,11 +694,30 @@ function Update-LeadCompraPorIdKommo {
 
   if ((Get-BoolConfig -Objeto $leadCfg -Nombre 'actualizarPresupuesto' -Default $true) -and $null -ne $Venta.Total) {
     $precio = ConvertTo-EnteroKommo $Venta.Total
-    if ($null -ne $precio) { $body.price = $precio }
+    if ($null -ne $precio) {
+      $precioEsperado = [int]$precio
+      $body.price = $precioEsperado
+    }
   }
 
   if ($body.Count -eq 0) { return }
   [void](Invoke-Kommo -Cfg $Cfg -Metodo 'PATCH' -Ruta "/api/v4/leads/$LeadId" -Cuerpo $body)
+
+  if ($null -ne $precioEsperado) {
+    $leadActual = Invoke-Kommo -Cfg $Cfg -Metodo 'GET' -Ruta "/api/v4/leads/$LeadId"
+    $precioActual = ConvertTo-EnteroKommo $leadActual.price
+    if ($precioActual -ne $precioEsperado) {
+      Write-Log 'warn' "Lead ${LeadId}: Kommo no aplico presupuesto $precioEsperado (quedo $precioActual). Reintentando."
+      [void](Invoke-Kommo -Cfg $Cfg -Metodo 'PATCH' -Ruta "/api/v4/leads/$LeadId" -Cuerpo @{ price = $precioEsperado })
+      Start-Sleep -Seconds 1
+      $leadActual = Invoke-Kommo -Cfg $Cfg -Metodo 'GET' -Ruta "/api/v4/leads/$LeadId"
+      $precioActual = ConvertTo-EnteroKommo $leadActual.price
+      if ($precioActual -ne $precioEsperado) {
+        throw "Kommo no aplico presupuesto en lead ${LeadId}: esperado $precioEsperado, actual $precioActual"
+      }
+    }
+  }
+
   Write-Log 'info' "Lead ${LeadId}: datos de compra actualizados."
 }
 
