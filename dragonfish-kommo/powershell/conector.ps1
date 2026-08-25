@@ -582,6 +582,49 @@ function Get-LeadParaContacto {
   return [int64](@($leads | Sort-Object id -Descending | Select-Object -First 1)[0].id)
 }
 
+function Get-ConfigLeadCompra {
+  param($Cfg)
+  $c = Get-PropValor -Objeto $Cfg -Nombre 'leadCompra'
+  if (-not $c) { return $null }
+  if (-not $c.habilitado) { return $null }
+  return $c
+}
+
+function Get-BoolConfig {
+  param($Objeto, [string]$Nombre, [bool]$Default)
+  $v = Get-PropValor -Objeto $Objeto -Nombre $Nombre
+  if ($null -eq $v) { return $Default }
+  return [bool]$v
+}
+
+function Update-LeadCompraKommo {
+  param($Cfg, [int64]$ContactoId, $Venta)
+
+  $leadCfg = Get-ConfigLeadCompra -Cfg $Cfg
+  if (-not $leadCfg) { return }
+
+  $leadId = Get-LeadParaContacto -Cfg $Cfg -ContactoId $ContactoId
+  if (-not $leadId) {
+    Write-Log 'warn' "Contacto ${ContactoId}: no tiene lead vinculado para actualizar datos de compra."
+    return
+  }
+
+  $body = @{}
+  if (Get-BoolConfig -Objeto $leadCfg -Nombre 'actualizarNombre' -Default $true) {
+    $nombre = "Compra $($Venta.Comprobante)"
+    if ($Venta.Sistema) { $nombre += " - $($Venta.Sistema)" }
+    $body.name = Remove-Emojis $nombre
+  }
+
+  if ((Get-BoolConfig -Objeto $leadCfg -Nombre 'actualizarPresupuesto' -Default $true) -and $null -ne $Venta.Total) {
+    $body.price = [int][math]::Round([decimal]$Venta.Total)
+  }
+
+  if ($body.Count -eq 0) { return }
+  [void](Invoke-Kommo -Cfg $Cfg -Metodo 'PATCH' -Ruta "/api/v4/leads/$leadId" -Cuerpo $body)
+  Write-Log 'info' "Lead ${leadId}: datos de compra actualizados."
+}
+
 function Get-ClaveProductoKommo {
   param($Item)
   $partes = @(
@@ -1080,6 +1123,11 @@ function Invoke-Pasada {
               Update-CamposCompraKommo -Cfg $Cfg -ContactoId $destino.id -Venta $venta -Detalle $detalle
             } catch {
               Write-Log 'warn' "No se pudieron actualizar campos de compra en contacto $($destino.id): $($_.Exception.Message)"
+            }
+            try {
+              Update-LeadCompraKommo -Cfg $Cfg -ContactoId $destino.id -Venta $venta
+            } catch {
+              Write-Log 'warn' "No se pudo actualizar el lead de compra para contacto $($destino.id): $($_.Exception.Message)"
             }
             try {
               Sync-ProductosKommo -Cfg $Cfg -ContactoId $destino.id -Detalle $detalle

@@ -46,6 +46,12 @@
     "catalogId": null
   },
 
+  "leadCompra": {
+    "habilitado": false,
+    "actualizarNombre": true,
+    "actualizarPresupuesto": true
+  },
+
   "avisos": {
     "telegramToken": "",
     "telegramChatId": "",
