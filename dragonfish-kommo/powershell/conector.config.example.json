@@ -53,6 +53,20 @@
     "actualizarPresupuesto": true
   },
 
+  "manualSalesbot": {
+    "habilitado": false,
+    "comandoFieldId": null,
+    "comandoFieldName": "Dragonfish comando",
+    "estadoFieldId": null,
+    "estadoFieldName": "Dragonfish estado",
+    "estadoPendiente": "pendiente",
+    "estadoVinculado": "vinculado",
+    "estadoError": "error",
+    "diasBusquedaVentas": 30,
+    "diasBusquedaLeads": 7,
+    "limiteLeads": 250
+  },
+
   "avisos": {
     "telegramToken": "",
     "telegramChatId": "",

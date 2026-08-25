@@ -531,6 +531,12 @@ function Add-NotaKommo {
   return Invoke-Kommo -Cfg $Cfg -Metodo 'POST' -Ruta '/api/v4/contacts/notes' -Cuerpo $cuerpo
 }
 
+function Add-NotaLeadKommo {
+  param($Cfg, [int64]$LeadId, [string]$Texto)
+  $cuerpo = @(@{ entity_id = $LeadId; note_type = 'common'; params = @{ text = $Texto } })
+  return Invoke-Kommo -Cfg $Cfg -Metodo 'POST' -Ruta '/api/v4/leads/notes' -Cuerpo $cuerpo
+}
+
 function Get-PropValor {
   param($Objeto, [string]$Nombre)
   if (-not $Objeto) { return $null }
@@ -635,6 +641,14 @@ function Update-LeadCompraKommo {
     return
   }
 
+  Update-LeadCompraPorIdKommo -Cfg $Cfg -LeadId $leadId -Venta $Venta -NombreContacto $NombreContacto -LeadCfg $leadCfg
+}
+
+function Update-LeadCompraPorIdKommo {
+  param($Cfg, [int64]$LeadId, $Venta, [string]$NombreContacto = '', $LeadCfg = $null)
+
+  $leadCfg = if ($LeadCfg) { $LeadCfg } else { Get-ConfigLeadCompra -Cfg $Cfg }
+  if (-not $leadCfg) { return }
   $body = @{}
   if (Get-BoolConfig -Objeto $leadCfg -Nombre 'actualizarNombre' -Default $false) {
     $nombre = "Compra $($Venta.Comprobante)"
@@ -657,8 +671,8 @@ function Update-LeadCompraKommo {
   }
 
   if ($body.Count -eq 0) { return }
-  [void](Invoke-Kommo -Cfg $Cfg -Metodo 'PATCH' -Ruta "/api/v4/leads/$leadId" -Cuerpo $body)
-  Write-Log 'info' "Lead ${leadId}: datos de compra actualizados."
+  [void](Invoke-Kommo -Cfg $Cfg -Metodo 'PATCH' -Ruta "/api/v4/leads/$LeadId" -Cuerpo $body)
+  Write-Log 'info' "Lead ${LeadId}: datos de compra actualizados."
 }
 
 function Get-ClaveProductoKommo {
@@ -745,6 +759,16 @@ function Sync-ProductosKommo {
     return
   }
 
+  Sync-ProductosLeadKommo -Cfg $Cfg -LeadId $leadId -Detalle $Detalle -ProdCfg $prodCfg
+}
+
+function Sync-ProductosLeadKommo {
+  param($Cfg, [int64]$LeadId, $Detalle, $ProdCfg = $null)
+
+  $prodCfg = if ($ProdCfg) { $ProdCfg } else { Get-ConfigProductos -Cfg $Cfg }
+  if (-not $prodCfg) { return }
+  if (-not $Detalle -or $Detalle.items.Count -eq 0) { return }
+
   $catalogId = [int64]$prodCfg.catalogId
   $cache = Get-ProductosCache
   $vinculados = 0
@@ -758,7 +782,7 @@ function Sync-ProductosKommo {
   }
   Save-ProductosCache -Cache $cache
   if ($vinculados -gt 0) {
-    Write-Log 'info' "Lead ${leadId}: $vinculados producto(s) vinculados en Kommo."
+    Write-Log 'info' "Lead ${LeadId}: $vinculados producto(s) vinculados en Kommo."
   }
 }
 
@@ -879,8 +903,237 @@ function Update-CamposCompraKommo {
   [void](Invoke-Kommo -Cfg $Cfg -Metodo 'PATCH' -Ruta "/api/v4/contacts/$ContactoId" -Cuerpo $cuerpo)
 }
 
+$script:CamposLeadKommo = $null
+
+function Get-TextoConfig {
+  param($Objeto, [string]$Nombre, [string]$Default)
+  $v = Get-PropValor -Objeto $Objeto -Nombre $Nombre
+  if ($null -eq $v -or [string]::IsNullOrWhiteSpace("$v")) { return $Default }
+  return "$v"
+}
+
+function Get-ConfigManualSalesbot {
+  param($Cfg)
+  $c = Get-PropValor -Objeto $Cfg -Nombre 'manualSalesbot'
+  if (-not $c) { return $null }
+  if (-not $c.habilitado) { return $null }
+  return $c
+}
+
+function Get-CamposLeadKommo {
+  param($Cfg)
+  if ($script:CamposLeadKommo) { return $script:CamposLeadKommo }
+  $r = Invoke-Kommo -Cfg $Cfg -Metodo 'GET' -Ruta '/api/v4/leads/custom_fields?limit=250'
+  $script:CamposLeadKommo = @($r._embedded.custom_fields)
+  return $script:CamposLeadKommo
+}
+
+function Resolve-CampoLeadKommo {
+  param($Cfg, [Nullable[int64]]$FieldId, [string]$FieldName)
+  $campos = Get-CamposLeadKommo -Cfg $Cfg
+  if ($FieldId) {
+    $porId = @($campos | Where-Object { [int64]$_.id -eq [int64]$FieldId } | Select-Object -First 1)[0]
+    if ($porId) { return $porId }
+  }
+  if ($FieldName) {
+    $porNombre = @($campos | Where-Object { "$($_.name)" -eq $FieldName } | Select-Object -First 1)[0]
+    if ($porNombre) { return $porNombre }
+  }
+  return $null
+}
+
+function Get-ValorCampoCustom {
+  param($Entidad, [int64]$FieldId)
+  foreach ($f in @($Entidad.custom_fields_values)) {
+    if ([int64]$f.field_id -eq $FieldId) {
+      foreach ($v in @($f.values)) {
+        if ($null -ne $v.value -and "$($v.value)" -ne '') { return "$($v.value)" }
+      }
+    }
+  }
+  return ''
+}
+
+function Set-CampoLeadTextoKommo {
+  param($Cfg, [int64]$LeadId, [int64]$FieldId, [string]$Valor)
+  $cuerpo = @{
+    custom_fields_values = @(@{
+        field_id = $FieldId
+        values   = @(@{ value = $Valor })
+      })
+  }
+  [void](Invoke-Kommo -Cfg $Cfg -Metodo 'PATCH' -Ruta "/api/v4/leads/$LeadId" -Cuerpo $cuerpo)
+}
+
+function Parse-ComandoSalesbot {
+  param([string]$Texto)
+  $m = [regex]::Match("$Texto", '^\s*([bBfF])\s*[-:]?\s*(\d{4})\s*$')
+  if (-not $m.Success) { return $null }
+
+  $codigo = $m.Groups[1].Value.ToUpperInvariant()
+  $sistema = if ($codigo -eq 'B') { 'Black' } else { 'Formen' }
+  return [pscustomobject]@{
+    codigo   = $codigo
+    sistema  = $sistema
+    ultimos4 = $m.Groups[2].Value
+  }
+}
+
+function Get-DatabasePorComandoSalesbot {
+  param($Cfg, [string]$Codigo)
+
+  $bases = @(Get-SqlDatabases -Cfg $Cfg)
+  if ($Codigo -eq 'B') {
+    $db = @($bases | Where-Object { "$_".ToUpperInvariant() -match 'BLACK' } | Select-Object -First 1)[0]
+    if ($db) { return "$db" }
+    return 'DRAGONFISH_BLACK'
+  }
+
+  $db = @($bases | Where-Object { "$_".ToUpperInvariant() -match 'FORMEN' } | Select-Object -First 1)[0]
+  if ($db) { return "$db" }
+  return 'DRAGONFISH_FORMEN'
+}
+
+function Get-VentasPorComandoSalesbot {
+  param($Cfg, [string]$Database, [string]$Ultimos4, [int]$DiasBusqueda)
+
+  $ts = "CAST(CONVERT(varchar(10),FALTAFW,120)+' '+HALTAFW AS datetime)"
+  $tipos = ($Cfg.tiposVenta | ForEach-Object { [int]$_ }) -join ','
+  $filtroTipo = if ($tipos) { " AND FACTTIPO IN ($tipos)" } else { '' }
+  $q = @"
+SELECT TOP (5)
+  CODIGO, FFCH, FTOTAL, FACTTIPO, FLETRA, FPTOVEN, FNUMCOMP, $ts AS TS
+FROM [$($Cfg.sql.schema)].[COMPROBANTEV]
+WHERE ANULADO = 0
+  $filtroTipo
+  AND $ts >= @desde
+  AND RIGHT('0000' + CONVERT(varchar(20), CONVERT(bigint, FNUMCOMP)), 4) = @ultimos4
+ORDER BY $ts DESC
+"@
+
+  $desde = (Get-Date).AddDays(-1 * $DiasBusqueda)
+  $filas = Invoke-Sql -Cfg $Cfg -Database $Database -Query $q -Params @{ desde = $desde; ultimos4 = $Ultimos4 }
+  return @($filas | ForEach-Object {
+      $codigo = "$($_.CODIGO)".Trim()
+      $letra = "$($_.FLETRA)".Trim()
+      $pto = "{0:d4}" -f [int]$_.FPTOVEN
+      $nro = "{0:d8}" -f [int]$_.FNUMCOMP
+      [pscustomobject]@{
+        Id          = "manual:${Database}:$codigo"
+        Codigo      = $codigo
+        Base        = $Database
+        Sistema     = Get-SistemaVentaPorBase $Database
+        Comprobante = "$letra $pto-$nro".Trim()
+        Ts          = [datetime]$_.TS
+        Total       = if ($_.FTOTAL -is [DBNull]) { $null } else { [decimal]$_.FTOTAL }
+      }
+    })
+}
+
+function Get-LeadsSalesbotPendientes {
+  param($Cfg, $ManualCfg, [int64]$EstadoFieldId, [int64]$ComandoFieldId)
+
+  $pendiente = (Get-TextoConfig -Objeto $ManualCfg -Nombre 'estadoPendiente' -Default 'pendiente').Trim().ToLowerInvariant()
+  $dias = [int](Get-TextoConfig -Objeto $ManualCfg -Nombre 'diasBusquedaLeads' -Default '7')
+  $limite = [int](Get-TextoConfig -Objeto $ManualCfg -Nombre 'limiteLeads' -Default '250')
+  if ($limite -lt 1 -or $limite -gt 250) { $limite = 250 }
+
+  $from = [DateTimeOffset]::new((Get-Date).AddDays(-1 * $dias)).ToUnixTimeSeconds()
+  $out = @()
+  for ($page = 1; $page -le 10; $page++) {
+    $ruta = "/api/v4/leads?filter[updated_at][from]=$from&limit=$limite&page=$page"
+    $r = Invoke-Kommo -Cfg $Cfg -Metodo 'GET' -Ruta $ruta
+    if (-not $r) { break }
+    $leads = @($r._embedded.leads)
+    if ($leads.Count -eq 0) { break }
+
+    foreach ($lead in $leads) {
+      $estado = (Get-ValorCampoCustom -Entidad $lead -FieldId $EstadoFieldId).Trim().ToLowerInvariant()
+      $comando = (Get-ValorCampoCustom -Entidad $lead -FieldId $ComandoFieldId).Trim()
+      if ($estado -eq $pendiente -and $comando) {
+        $lead | Add-Member -NotePropertyName dragonfish_comando -NotePropertyValue $comando -Force
+        $out += $lead
+      }
+    }
+
+    if ($leads.Count -lt $limite) { break }
+  }
+  return @($out)
+}
+
+function Invoke-ComandosSalesbot {
+  param($Cfg)
+
+  $manualCfg = Get-ConfigManualSalesbot -Cfg $Cfg
+  if (-not $manualCfg) { return }
+
+  $comandoFieldId = Get-PropValor -Objeto $manualCfg -Nombre 'comandoFieldId'
+  $comandoFieldName = Get-TextoConfig -Objeto $manualCfg -Nombre 'comandoFieldName' -Default 'Dragonfish comando'
+  $estadoFieldId = Get-PropValor -Objeto $manualCfg -Nombre 'estadoFieldId'
+  $estadoFieldName = Get-TextoConfig -Objeto $manualCfg -Nombre 'estadoFieldName' -Default 'Dragonfish estado'
+
+  $campoComando = Resolve-CampoLeadKommo -Cfg $Cfg -FieldId $comandoFieldId -FieldName $comandoFieldName
+  $campoEstado = Resolve-CampoLeadKommo -Cfg $Cfg -FieldId $estadoFieldId -FieldName $estadoFieldName
+  if (-not $campoComando -or -not $campoEstado) {
+    Write-Log 'warn' "Salesbot manual deshabilitado en esta pasada: faltan campos de lead ($comandoFieldName / $estadoFieldName)."
+    return
+  }
+
+  $leads = @(Get-LeadsSalesbotPendientes -Cfg $Cfg -ManualCfg $manualCfg -EstadoFieldId ([int64]$campoEstado.id) -ComandoFieldId ([int64]$campoComando.id))
+  if ($leads.Count -eq 0) { return }
+
+  $estadoVinculado = Get-TextoConfig -Objeto $manualCfg -Nombre 'estadoVinculado' -Default 'vinculado'
+  $estadoError = Get-TextoConfig -Objeto $manualCfg -Nombre 'estadoError' -Default 'error'
+  $diasVentas = [int](Get-TextoConfig -Objeto $manualCfg -Nombre 'diasBusquedaVentas' -Default '30')
+  $ok = 0
+  $errores = 0
+
+  foreach ($lead in $leads) {
+    $leadId = [int64]$lead.id
+    $cmd = "$($lead.dragonfish_comando)".Trim()
+    try {
+      $parsed = Parse-ComandoSalesbot $cmd
+      if (-not $parsed) { throw "Comando invalido '$cmd'. Usar B 6604 o F 6604." }
+
+      $db = Get-DatabasePorComandoSalesbot -Cfg $Cfg -Codigo $parsed.codigo
+      $ventas = @(Get-VentasPorComandoSalesbot -Cfg $Cfg -Database $db -Ultimos4 $parsed.ultimos4 -DiasBusqueda $diasVentas)
+      if ($ventas.Count -eq 0) { throw "No encontre comprobante $cmd en $($parsed.sistema)." }
+      if ($ventas.Count -gt 1) {
+        $lista = ($ventas | ForEach-Object { $_.Comprobante }) -join ', '
+        throw "Comando $cmd ambiguo en $($parsed.sistema): $lista."
+      }
+
+      $venta = $ventas[0]
+      if ($Cfg.dryRun) {
+        Write-Log 'info' "[DRY_RUN] Salesbot $cmd en lead $leadId -> $($venta.Comprobante)"
+      } else {
+        $detalle = Get-DetalleVenta -Cfg $Cfg -Venta $venta
+        [void](Add-NotaLeadKommo -Cfg $Cfg -LeadId $leadId -Texto (New-TextoNota -Venta $venta -Minutos 0 -Detalle $detalle -Origen 'manual'))
+        Update-LeadCompraPorIdKommo -Cfg $Cfg -LeadId $leadId -Venta $venta
+        Sync-ProductosLeadKommo -Cfg $Cfg -LeadId $leadId -Detalle $detalle
+        Set-CampoLeadTextoKommo -Cfg $Cfg -LeadId $leadId -FieldId ([int64]$campoEstado.id) -Valor $estadoVinculado
+      }
+      $ok++
+      Write-Log 'info' "Salesbot $cmd -> $($venta.Comprobante) vinculado al lead $leadId."
+    } catch {
+      $errores++
+      Write-Log 'warn' "Salesbot $cmd en lead ${leadId}: $($_.Exception.Message)"
+      if (-not $Cfg.dryRun) {
+        try {
+          [void](Add-NotaLeadKommo -Cfg $Cfg -LeadId $leadId -Texto (Remove-Emojis "No pude vincular la compra '$cmd': $($_.Exception.Message)"))
+          Set-CampoLeadTextoKommo -Cfg $Cfg -LeadId $leadId -FieldId ([int64]$campoEstado.id) -Valor $estadoError
+        } catch {
+          Write-Log 'warn' "No pude marcar error de Salesbot en lead ${leadId}: $($_.Exception.Message)"
+        }
+      }
+    }
+  }
+
+  Write-Log 'info' "Salesbot manual: $ok vinculadas, $errores con error."
+}
+
 function New-TextoNota {
-  param($Venta, [int]$Minutos, $Detalle = $null)
+  param($Venta, [int]$Minutos, $Detalle = $null, [string]$Origen = 'auto')
   $total = ConvertTo-MontoTexto $Venta.Total
   $lineas = @(
     'Compra en el local',
@@ -916,7 +1169,11 @@ function New-TextoNota {
   }
 
   $lineas += ''
-  $lineas += "(asociado automaticamente: el contacto se cargo $Minutos min despues de la venta)"
+  if ($Origen -eq 'manual') {
+    $lineas += '(asociado manualmente desde Salesbot)'
+  } else {
+    $lineas += "(asociado automaticamente: el contacto se cargo $Minutos min despues de la venta)"
+  }
   return Remove-Emojis ($lineas -join "`n")
 }
 
@@ -1083,6 +1340,12 @@ function Show-Reporte {
 
 function Invoke-Pasada {
   param($Cfg)
+
+  try {
+    Invoke-ComandosSalesbot -Cfg $Cfg
+  } catch {
+    Write-Log 'warn' "Fallo el procesamiento manual de Salesbot: $($_.Exception.Message)"
+  }
 
   $stats = @{ evaluadas = 0; asociadas = 0; sin_candidato = 0; ambiguas = 0; fallidas = 0 }
   $cursor = Get-Cursor
