@@ -1250,7 +1250,7 @@ function Invoke-ComandosSalesbot {
 
       $db = Get-DatabasePorComandoSalesbot -Cfg $Cfg -Codigo $parsed.codigo
       $ventas = @(Get-VentasPorComandoSalesbot -Cfg $Cfg -Database $db -Ultimos4 $parsed.ultimos4 -DiasBusqueda $diasVentas)
-      if ($ventas.Count -eq 0) { throw "No encontre comprobante $cmd en $($parsed.sistema)." }
+      if ($ventas.Count -eq 0) { throw "No encontre comprobante activo $cmd en $($parsed.sistema) (puede estar anulado o fuera del periodo de busqueda)." }
       if ($ventas.Count -gt 1) {
         $lista = ($ventas | ForEach-Object { $_.Comprobante }) -join ', '
         throw "Comando $cmd ambiguo en $($parsed.sistema): $lista."
