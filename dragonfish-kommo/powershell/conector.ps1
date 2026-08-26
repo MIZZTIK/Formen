@@ -920,22 +920,31 @@ function Sync-ProductosLeadKommo {
   $catalogId = [int64]$prodCfg.catalogId
   $cache = Get-ProductosCache
   $vinculados = 0
+  $fallidos = 0
   foreach ($it in @($Detalle.items)) {
     $nombreBase = if ($it.descripcion) { $it.descripcion } else { $it.articulo }
     if (-not $nombreBase) { continue }
-    $productoId = Resolve-ProductoCatalogoKommo -Cfg $Cfg -CatalogId $catalogId -Item $it -Cache $cache
     try {
-      Update-ProductoCatalogoKommo -Cfg $Cfg -CatalogId $catalogId -ProductoId $productoId -Item $it -ProdCfg $prodCfg
+      $productoId = Resolve-ProductoCatalogoKommo -Cfg $Cfg -CatalogId $catalogId -Item $it -Cache $cache
+      try {
+        Update-ProductoCatalogoKommo -Cfg $Cfg -CatalogId $catalogId -ProductoId $productoId -Item $it -ProdCfg $prodCfg
+      } catch {
+        Write-Log 'warn' "No se pudieron actualizar datos del producto $productoId en Kommo: $($_.Exception.Message)"
+      }
+      $cantidad = if ($null -ne $it.cantidad) { [int][math]::Round([decimal]$it.cantidad) } else { 1 }
+      Add-ProductoALeadKommo -Cfg $Cfg -LeadId $leadId -CatalogId $catalogId -ProductoId $productoId -Cantidad $cantidad
+      $vinculados++
     } catch {
-      Write-Log 'warn' "No se pudieron actualizar datos del producto $productoId en Kommo: $($_.Exception.Message)"
+      $fallidos++
+      Write-Log 'warn' ("Lead {0}: no se pudo vincular producto '{1}' en Kommo: {2}" -f $LeadId, (Get-NombreProductoKommo $it), $_.Exception.Message)
     }
-    $cantidad = if ($null -ne $it.cantidad) { [int][math]::Round([decimal]$it.cantidad) } else { 1 }
-    Add-ProductoALeadKommo -Cfg $Cfg -LeadId $leadId -CatalogId $catalogId -ProductoId $productoId -Cantidad $cantidad
-    $vinculados++
   }
   Save-ProductosCache -Cache $cache
   if ($vinculados -gt 0) {
     Write-Log 'info' "Lead ${LeadId}: $vinculados producto(s) vinculados en Kommo."
+  }
+  if ($fallidos -gt 0) {
+    Write-Log 'warn' "Lead ${LeadId}: $fallidos producto(s) no se pudieron vincular."
   }
 }
 
@@ -975,7 +984,7 @@ function ConvertTo-ValorCampoKommo {
     return [decimal]$Valor
   }
   if ($Valor -is [datetime]) { return $Valor.ToString('dd/MM/yyyy HH:mm') }
-  return "$Valor"
+  return Remove-Emojis "$Valor"
 }
 
 function Join-ProductosResumen {
