@@ -64,10 +64,18 @@ function Get-Config {
 }
 
 # Kommo trunca cualquier texto en el primer emoji (su base es MySQL utf8 de
-# 3 bytes). Sacamos todo lo que este fuera del plano basico.
+# 3 bytes). Ademas, algunas descripciones de Dragonfish pueden traer caracteres
+# de control invisibles que Kommo rechaza al crear notas.
 function Remove-Emojis {
   param([string]$Texto)
-  return [regex]::Replace($Texto, '[\uD800-\uDBFF][\uDC00-\uDFFF]', '')
+  if ($null -eq $Texto) { return '' }
+  $limpio = [regex]::Replace("$Texto", '[\uD800-\uDBFF][\uDC00-\uDFFF]', '')
+  $limpio = [regex]::Replace($limpio, '[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', ' ')
+  $limpio = $limpio -replace "\r\n|\r|\n", "`n"
+  if ($limpio.Length -gt 60000) {
+    $limpio = $limpio.Substring(0, 60000)
+  }
+  return $limpio.Trim()
 }
 
 # ── Dragonfish (SQL Server, solo lectura) ────────────────────────────────────
@@ -536,13 +544,13 @@ function Resolve-ContactoDestino {
 
 function Add-NotaKommo {
   param($Cfg, [int64]$ContactoId, [string]$Texto)
-  $cuerpo = @(@{ entity_id = $ContactoId; note_type = 'common'; params = @{ text = $Texto } })
+  $cuerpo = @(@{ entity_id = $ContactoId; note_type = 'common'; params = @{ text = (Remove-Emojis $Texto) } })
   return Invoke-Kommo -Cfg $Cfg -Metodo 'POST' -Ruta '/api/v4/contacts/notes' -Cuerpo $cuerpo
 }
 
 function Add-NotaLeadKommo {
   param($Cfg, [int64]$LeadId, [string]$Texto)
-  $cuerpo = @(@{ entity_id = $LeadId; note_type = 'common'; params = @{ text = $Texto } })
+  $cuerpo = @(@{ entity_id = $LeadId; note_type = 'common'; params = @{ text = (Remove-Emojis $Texto) } })
   return Invoke-Kommo -Cfg $Cfg -Metodo 'POST' -Ruta '/api/v4/leads/notes' -Cuerpo $cuerpo
 }
 
