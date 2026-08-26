@@ -1283,7 +1283,12 @@ function Invoke-ComandosSalesbot {
         Write-Log 'info' "[DRY_RUN] Salesbot $cmd en lead $leadId -> $($venta.Comprobante)"
       } else {
         $detalle = Get-DetalleVenta -Cfg $Cfg -Venta $venta
-        [void](Add-NotaLeadKommo -Cfg $Cfg -LeadId $leadId -Texto (New-TextoNota -Venta $venta -Minutos 0 -Detalle $detalle -Origen 'manual'))
+        try {
+          [void](Add-NotaLeadKommo -Cfg $Cfg -LeadId $leadId -Texto (New-TextoNota -Venta $venta -Minutos 0 -Detalle $detalle -Origen 'manual'))
+        } catch {
+          Write-Log 'warn' ("Lead {0}: Kommo rechazo la nota detallada; se reintenta con nota basica. {1}" -f $leadId, $_.Exception.Message)
+          [void](Add-NotaLeadKommo -Cfg $Cfg -LeadId $leadId -Texto (New-TextoNota -Venta $venta -Minutos 0 -Detalle $null -Origen 'manual'))
+        }
         Sync-ProductosLeadKommo -Cfg $Cfg -LeadId $leadId -Detalle $detalle
         Update-LeadCompraPorIdKommo -Cfg $Cfg -LeadId $leadId -Venta $venta
         Set-CampoLeadTextoKommo -Cfg $Cfg -LeadId $leadId -FieldId ([int64]$campoEstado.id) -Valor $estadoVinculado
@@ -1592,7 +1597,12 @@ function Invoke-Pasada {
             } catch {
               Write-Log 'warn' "No se pudo leer detalle de $($venta.Comprobante): $($_.Exception.Message)"
             }
-            [void](Add-NotaKommo -Cfg $Cfg -ContactoId $destino.id -Texto (New-TextoNota -Venta $venta -Minutos $min -Detalle $detalle))
+            try {
+              [void](Add-NotaKommo -Cfg $Cfg -ContactoId $destino.id -Texto (New-TextoNota -Venta $venta -Minutos $min -Detalle $detalle))
+            } catch {
+              Write-Log 'warn' "Contacto $($destino.id): Kommo rechazo la nota detallada; se reintenta con nota basica. $($_.Exception.Message)"
+              [void](Add-NotaKommo -Cfg $Cfg -ContactoId $destino.id -Texto (New-TextoNota -Venta $venta -Minutos $min -Detalle $null))
+            }
             try {
               Update-CamposCompraKommo -Cfg $Cfg -ContactoId $destino.id -Venta $venta -Detalle $detalle
             } catch {
