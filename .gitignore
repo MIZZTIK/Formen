@@ -4,6 +4,11 @@
 .env
 credenciales-reales*
 
+# datos de clientes: los backups de telefonos son datos personales, no van al repo
+backups/
+
 # temporales
 __pycache__/
 *.pyc
+
+.claude/settings.local.json
