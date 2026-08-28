@@ -156,16 +156,65 @@ vale la pena usarla en lugar del import manual. Y `n8n-logs` para diagnosticar e
 
 ---
 
+## 🏪 Formen — el conector Dragonfish → Kommo (NO es n8n)
+
+Además del bot, Formen tiene un **segundo sistema** que no vive en este repo: un script de
+PowerShell que lleva las ventas del local a Kommo. Conviene saber que existe antes de tocar nada.
+
+- **Dónde corre:** `C:\FormenConector\conector.ps1` (~1500 líneas), **en la PC del local de
+  Agustín**. No está acá y no se puede editar directo: se parchea pegando PowerShell en su
+  consola. Los parches sí se versionan, en `scripts/formen_conector_*.ps1`.
+- **Qué hace:** lee las ventas de SQL Server (`DRAGONFISH_FORMEN` y `DRAGONFISH_BLACK`), busca a
+  qué cliente de Kommo corresponden y le carga nota, productos y presupuesto al lead.
+- **Cómo empareja:** el vendedor anota en el formulario del iPad los **últimos 4 dígitos del
+  comprobante** (campo `Position`, que en la UI se ve como "Cargo") y la caja (`Sistema de
+  venta`: Black o Formen). El conector busca ese número con
+  `GET /api/v4/contacts?query=NNNN` — **sin mirar la hora**. Si dos ventas comparten los mismos
+  4 dígitos, desempata por la caja; si duda, no escribe.
+- **Repesca:** la venta que no encuentra dueño **no se descarta**: queda pendiente y se reintenta
+  cada `match.repescaCadaMin` (15) durante `match.repescaHoras` (24). El vendedor puede cargar el
+  formulario antes, durante o horas después de facturar.
+- **Carga a mano:** escribir `B 6645` o `F 6645` en el campo **`Dragonfish comando`** (`2094635`)
+  de un lead vincula ese comprobante a ese lead. Busca en los últimos 30 días. **No tocar
+  `Dragonfish estado`** (`2094637`): es la respuesta del conector (`vinculado` / `error`).
+- **Dónde va la compra:** al lead del **formulario**, no al de la ficha vieja. La nota sí va a la
+  ficha del cliente, donde está el chat.
+
+### Trampas propias del conector
+
+1. **PowerShell 5 manda el body en Latin-1.** Con una `ñ` Kommo rechaza el pedido **entero** con
+   400 — no se pierde el carácter, se pierde la llamada. El body va como bytes UTF-8.
+2. **Kommo recalcula el `price` al vincular productos, y de forma asincrónica**: termina después
+   de tu `PATCH`. Leer el precio base ANTES de tocar productos, y al escribirlo reintentar y
+   verificar.
+3. **Los leads no se borran por API** (405, y `is_deleted` no hace nada). Para limpiar uno de
+   prueba, dejarlo en `price = 0`.
+4. **El chat "para SalesBot" no se puede leer por API.** Por eso el comando va en un campo.
+5. **Solo 1 de cada 3 ventas llega al CRM, y está bien así**: Agustín quiere seguir a los
+   clientes que dejan sus datos, no registrar toda su facturación. El importe del embudo **no es
+   la venta del día**.
+
+**Arranque:** no hay permisos para tareas programadas en esa PC. Corre desde un acceso directo en
+Inicio lanzado por `wscript`, así que **arranca al iniciar sesión, no al prender la máquina**.
+Para correrlo a mano hace falta `-ExecutionPolicy Bypass`.
+
+---
+
 ## Estado y pendientes
 
-**Ambos bots están funcionando en producción.**
+**Ambos bots están funcionando en producción**, y el conector de Formen también.
 
 Pendientes conocidos:
-- 🔐 **Rotar tokens**: los de Kommo (AVC y Formen) y el del bot de Telegram se pegaron en chat alguna vez.
+- 🔐 **Rotar tokens**: los de Kommo (AVC y Formen) y el del bot de Telegram se pegaron en chat
+  alguna vez. El de Formen quedó expuesto de nuevo el 28/08/2026.
 - **AVC**: validar el flujo de inversores end-to-end; evaluar subir el modelo a `gpt-4.1` (idioma).
-- **Formen**: reanudar la pausa automáticamente a las 24 h (hoy queda pausado indefinido);
+- **Formen (bot)**: reanudar la pausa automáticamente a las 24 h (hoy queda pausado indefinido);
   calendario de feriados (hoy da el horario normal si no se lo mencionan); probar Instagram.
-- **Formen**: confirmar con Agustín que le llegan los avisos de Telegram (él los daba por rotos).
+- **Formen (bot)**: confirmar con Agustín que le llegan los avisos de Telegram (él los daba por rotos).
+- **Formen (conector)**: el formulario del iPad crea un contacto nuevo aunque el teléfono ya
+  exista — es la raíz de los duplicados; mirar el control de duplicados de la cuenta.
+  El reporte `-Medir` quedó contando los reintentos de la repesca como ventas. Y el proceso
+  no arranca si nadie inicia sesión en esa PC, sin nadie que avise cuando se cae.
 
 ## graphify
 
