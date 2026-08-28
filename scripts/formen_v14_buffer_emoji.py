@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Formen v14: mismo fix que AVC v16 — limpiar emojis del mensaje antes de guardarlo en bot_buffer."""
+"""Formen v14: limpiar emojis del mensaje antes de guardarlo en bot_buffer."""
 import json
 
 SRC = r"C:\Users\marti\OneDrive\Escritorio\Formen-workflow-n8n-v13-buffer-addendum.json"

@@ -39,7 +39,7 @@ Medido en `utm_content` de Formen: **2000 OK · 3000 → 400 Bad Request**. Se t
 `onError: continueRegularOutput` el flujo sigue y el Salesbot **envía el valor VIEJO del campo** →
 el cliente recibe la respuesta anterior sin que se note en el log.
 
-*(El viejo `Respuesta_bot` de AVC era tipo "text" = máx. 256 chars, y no se puede convertir a textarea
+*(Un campo de tipo "text" aguanta máx. 256 chars y no se puede convertir a textarea
 después de creado.)*
 
 ---
@@ -118,17 +118,21 @@ Un cliente recibió el objeto crudo `{"respuesta":"...","derivar":false,...}` po
 
 ---
 
-## 9. Google Calendar (AVC)
+## 9. Escribir en Kommo desde PowerShell (el conector)
 
-- El nodo **nativo** de Google Calendar no agrega invitados, ni manda mail, ni crea el Meet bien.
-  → se usa **HTTP Request** a `POST /calendar/v3/calendars/{CAL}/events?sendUpdates=all&conferenceDataVersion=1`
-  con `attendees` + `conferenceData.createRequest` (hangoutsMeet) + `reminders.overrides`.
-- La app OAuth debe estar **publicada en Producción**. En modo "Prueba", Google **vence el refresh token
-  cada 7 días** y el calendario se rompe todas las semanas.
-- Al autorizar aparece "Google no ha verificado esta app" → *Configuración avanzada → Ir a…*. Es normal
-  con un solo usuario, no requiere verificación.
-- **No re-autenticar una credencial compartida con otro proyecto**: se le rompe al otro.
-- El **calendar id aparece en 5 lugares** del workflow (ver CLAUDE.md).
+- **El body viaja en Latin-1 si no se lo fuerza.** `Invoke-RestMethod` con un `-Body` string y
+  `ContentType: application/json` sin charset codifica en Latin-1: una `ñ` sale como el byte suelto
+  `0xF1`, que no es UTF-8 válido, y Kommo **rechaza el pedido entero** con 400. No se pierde el
+  carácter: se pierde la llamada. Mandar `[System.Text.Encoding]::UTF8.GetBytes($json)`.
+- **El `price` del lead se recalcula solo al vincular productos, y de forma asincrónica**: termina
+  *después* de tu `PATCH` y lo pisa. Al fijar un importe después de tocar productos, reintentar y
+  verificar leyéndolo, no escribir una vez y confiar.
+- **Los leads no se borran por API**: `DELETE /api/v4/leads` da 405 y `is_deleted` no hace nada.
+  Para limpiar uno de prueba, dejarlo en `price = 0`.
+- **`POST /leads/{id}/link` puede empezar a devolver 500** después de muchas llamadas seguidas, y una
+  vez trabado rechaza cualquier vínculo, en cualquier lead, desde cualquier máquina con ese token.
+  Para descartar que sea el catálogo, probar desde la interfaz web: si ahí funciona, es la API.
+  Se destrabó solo en media hora (28/08/2026).
 
 ---
 
