@@ -1,0 +1,10 @@
+{
+  "name": "formen-landing",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Landing institucional de Formen (formen.ar) mas la pagina interna /pausar y sus funciones de /api.",
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4"
+  }
+}
