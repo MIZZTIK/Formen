@@ -1,14 +1,15 @@
-# asistentes-kommo
+# bot — el asistente de WhatsApp de Formen
 
-Automatizaciones de **Formen** (sastrería de autor, Corrientes) sobre **Kommo + n8n + OpenAI**:
-el asistente de WhatsApp que atiende el chat, y el conector que lleva las ventas del local al CRM.
+El asistente que atiende el chat de **Formen** (sastrería de autor, Corrientes) sobre
+**Kommo + n8n + OpenAI**: responde consultas de catálogo y deriva a humano.
 
 👉 **Empezá por [`CLAUDE.md`](CLAUDE.md)** — ahí está la arquitectura, los IDs de la cuenta y las
 restricciones que explican por qué el diseño es como es.
 
-> Formen es un proyecto de **Boomerang**. El asistente de AVC vivía acá y se mudó a su propio repo
-> (`../AVC`) el 2026-08-28: son clientes de agencias distintas y no comparten servidores,
-> credenciales ni repos.
+> Esto vivía en un repo aparte (`asistentes-kommo`), que hasta el 2026-08-28 tenía también el
+> asistente de AVC. Con AVC mudado a su propio repo, los dos repos que quedaban eran de Formen y
+> de Boomerang, con el conector partido al medio: el código acá y sus parches allá. Se unificaron
+> en este repo el 2026-08-28.
 
 ## Estructura
 

@@ -150,12 +150,12 @@ vale la pena usarla en lugar del import manual. Y `n8n-logs` para diagnosticar e
 
 ## 🏪 Formen — el conector Dragonfish → Kommo (NO es n8n)
 
-Además del bot, Formen tiene un **segundo sistema** que no vive en este repo: un script de
-PowerShell que lleva las ventas del local a Kommo. Conviene saber que existe antes de tocar nada.
+Además del bot, Formen tiene un **segundo sistema**, que vive en `../dragonfish-kommo/`: un script
+de PowerShell que lleva las ventas del local a Kommo. Conviene saber que existe antes de tocar nada.
 
 - **Dónde corre:** `C:\FormenConector\conector.ps1` (~1500 líneas), **en la PC del local de
-  Agustín**. No está acá y no se puede editar directo: se parchea pegando PowerShell en su
-  consola. Los parches sí se versionan, en `scripts/formen_conector_*.ps1`.
+  Agustín**. La copia de acá no es la que corre y no se puede editar directo: se parchea pegando
+  PowerShell en su consola. Los parches se versionan en `../dragonfish-kommo/parches/`.
 - **Qué hace:** lee las ventas de SQL Server (`DRAGONFISH_FORMEN` y `DRAGONFISH_BLACK`), busca a
   qué cliente de Kommo corresponden y le carga nota, productos y presupuesto al lead.
 - **Cómo empareja:** el vendedor anota en el formulario del iPad los **últimos 4 dígitos del

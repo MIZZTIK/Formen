@@ -1,8 +1,24 @@
-# CLAUDE.md — Landing institucional de Formen
+# CLAUDE.md — Formen
 
 > Archivo de contexto para Claude Code. Leé esto antes de tocar nada.
 
-## Objetivo del proyecto
+## Qué hay en este repo
+
+Todo lo de **Formen** (sastrería de autor en Corrientes, marca de Classic SRL). Es un proyecto de
+**Boomerang**: no comparte servidores, cuentas ni credenciales con Consultoría Digital.
+
+| Dónde | Qué es |
+|---|---|
+| raíz (`index.html`, `styles.css`, `assets/`) | **La landing** `formen.ar`. Estática, en Vercel. Existe para sostener la verificación del WABA ante Meta — los requisitos de más abajo son el motivo de existir del sitio. |
+| `pausar.html` + `api/` | **La página interna** donde el local silencia al bot para un número por 24 h, y sus funciones serverless. Es lo único del sitio con backend (Neon). |
+| `bot/` | **El asistente de WhatsApp** sobre Kommo + n8n + OpenAI. Empezá por `bot/CLAUDE.md`. |
+| `dragonfish-kommo/` | **El conector** que lleva las ventas del local al CRM, con sus parches en `parches/`. Corre en la PC del local, no acá. |
+
+Hasta el 2026-08-28 el bot vivía en un repo aparte (`asistentes-kommo`), junto con el asistente de
+AVC. Cuando AVC se mudó a su propio repo quedaron dos repos que eran los dos de Formen, y el
+conector partido al medio: el código de un lado y sus parches del otro. Se unificaron ese día.
+
+## Objetivo de la landing
 
 Construir una **landing institucional de UNA sola página** para la marca **Formen** (sastrería de autor para hombre, Corrientes, Argentina), que se publica en el dominio **formen.ar**.
 

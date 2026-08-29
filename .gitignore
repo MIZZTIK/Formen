@@ -7,8 +7,21 @@ desktop.ini
 .vscode/
 .idea/
 
-# Dependencias (el sitio es estático; no debería haber, pero por las dudas)
+# Dependencias
 node_modules/
+
+# NUNCA versionar secretos
+*token*.txt
+*.key
+.env
+credenciales-reales*
+
+# Datos de clientes: los backups de telefonos son datos personales, no van al repo
+bot/backups/
 
 # Logs / temporales
 *.log
+__pycache__/
+*.pyc
+
+.claude/settings.local.json

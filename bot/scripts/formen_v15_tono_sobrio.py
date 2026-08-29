@@ -25,9 +25,12 @@ Comprobacion: al terminar, el sha1 del prompt tiene que dar 6e0dd1... (ver salid
 """
 import json
 import hashlib
+import os
 import re
 
-SRC = r"C:\EspacioDeTrabajo\asistentes-kommo\formen\workflow-formen.json"
+# Relativo a este archivo: el repo se unifico el 28/08 y la ruta absoluta quedo vieja.
+SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                   "formen", "workflow-formen.json")
 
 wf = json.load(open(SRC, encoding="utf-8"))
 nodos = [n for n in wf["nodes"]

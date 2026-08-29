@@ -1,11 +1,26 @@
-# Formen — Landing institucional
+# Formen
 
-Landing de una sola página para **Formen** (marca de **Classic SRL**), sastrería de autor en Corrientes, Argentina.
-Sitio estático (HTML + CSS + JS vanilla), sin backend ni dependencias de build. Listo para subir a cualquier hosting y apuntar a **formen.ar**.
+Todo lo de **Formen** (marca de **Classic SRL**), sastrería de autor en Corrientes, Argentina.
+Proyecto de **Boomerang**.
+
+| Dónde | Qué es |
+|---|---|
+| raíz | La **landing** `formen.ar` — estática, en Vercel |
+| [`pausar.html`](pausar.html) + [`api/`](api) | La **página interna** para silenciar el bot con un número, 24 h |
+| [`bot/`](bot) | El **asistente de WhatsApp** sobre Kommo + n8n + OpenAI |
+| [`dragonfish-kommo/`](dragonfish-kommo) | El **conector** que lleva las ventas del local al CRM |
+
+Hasta el 2026-08-28 el bot estaba en un repo aparte; se unificó todo acá.
+
+---
+
+## La landing
+
+Página de una sola hoja, estática (HTML + CSS + JS vanilla). Se sirve desde la raíz del repo.
 
 > El objetivo de esta web es cumplir los requisitos de Meta/Facebook para verificar el negocio y la cuenta de **WhatsApp Business (WABA)**.
 
-## Estructura
+### Estructura
 
 ```
 index.html              → la página (todas las secciones)

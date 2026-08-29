@@ -34,8 +34,11 @@ DESPUES DE CORRER ESTO, EN n8n:
      placeholder a proposito: las credenciales no se versionan).
 """
 import json
+import os
 
-SRC = r"C:\EspacioDeTrabajo\asistentes-kommo\formen\workflow-formen.json"
+# Relativo a este archivo: el repo se unifico el 28/08 y la ruta absoluta quedo vieja.
+SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                   "formen", "workflow-formen.json")
 
 ETAPA_PAUSADO = 108221251
 CRED_KOMMO = {"httpHeaderAuth": {"id": "XFOpX4xAM95NWBU6", "name": "Kommo ForMen"}}
