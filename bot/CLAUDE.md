@@ -12,13 +12,19 @@ Dos piezas para **Formen** (sastrería de autor en Corrientes, marca de Classic 
 | Rubro | Indumentaria masculina / sastrería (Corrientes, AR) |
 | Canales | WhatsApp, Instagram |
 | Kommo | `adminformenar.kommo.com` |
-| n8n | `n8n-06ir.srv1605341.hstgr.cloud` → `/webhook/formen` |
+| n8n | `n8n-06ir.srv1605341.hstgr.cloud` → `/webhook/formen` (VPS de **Boomerang**, `187.77.12.160`) |
 | Workflow vigente | `formen/workflow-formen.json` |
 | Modelo | gpt-4.1 |
 | Agencia | **Boomerang** |
 
 > **Formen es de Boomerang, no de Consultoría Digital.** No va al Kanban del equipo y no comparte
 > servidores, cuentas ni credenciales con la otra agencia.
+>
+> ⛔ **Esto incluye el n8n, y es la trampa más fácil de pisar.** El `~/.claude/n8n.json` **global**
+> apunta a `n8n.srv1224751.hstgr.cloud` (`72.60.15.125`), que es el de **Consultoría Digital**.
+> El de Formen es `n8n-06ir.srv1605341.hstgr.cloud` (`187.77.12.160`, alias ssh `vps-boomerang`).
+> Usar la config por defecto para publicar acá significa **publicar en el servidor equivocado**.
+> Verificado por DNS el 2026-08-30.
 >
 > El asistente de **AVC Soluciones Empresariales** vivía en este repo y se mudó a `../AVC`
 > el 2026-08-28: es cliente de Consultoría Digital y no tenía nada que hacer acá. Comparte
@@ -142,9 +148,42 @@ Convenciones que conviene mantener:
 - **Nunca** meter tokens en el repo.
 
 ### Despliegue
-Import manual en n8n (Import from File) → activar el nuevo, desactivar el viejo.
-*(Existe una skill `n8n-server` para publicar en caliente por la API oficial, con backup y rollback —
-vale la pena usarla en lugar del import manual. Y `n8n-logs` para diagnosticar ejecuciones.)*
+
+**Acá se publica actualizando el workflow EN EL LUGAR, a mano:**
+
+1. Abrir "Formen - Asistente IA" en n8n → **⋯ → Download**. Ese archivo es el rollback: guardalo
+   antes de tocar nada.
+2. Crear las credenciales que falten (ver más abajo) **antes** de pegar.
+3. En el mismo workflow: Ctrl+A → borrar → pegar el JSON nuevo en el canvas.
+4. Elegir a mano las credenciales que quedaron sin enganchar y **Guardar**.
+
+No hay que activar ni desactivar nada: es el mismo workflow, con su id, su webhook ya registrado
+y su estado activo. Nunca queda una ventana en la que Kommo pegue contra un webhook muerto.
+
+⛔ **`Import from File` es el camino que NO hay que usar acá.** El JSON del repo no trae `id` ni
+`active` (sus claves de raíz son `name`, `nodes`, `connections`, `meta`, `pinData`), así que el
+import **crea un workflow nuevo**, no actualiza el que corre. Y ese workflow nuevo trae el mismo
+`path: formen` y el mismo `webhookId: formen-kommo-webhook` que el que está activo: n8n rechaza
+registrar dos veces la misma ruta de producción. El modo feo de fallar es silencioso — el import
+dice que salió bien, queda un duplicado inactivo, y **el bot sigue contestando con la versión
+vieja** mientras uno cree que publicó.
+
+**Por qué a mano y no con la skill.** No es por costumbre: es lo único disponible.
+La skill `n8n-server` publica en caliente con backup
+y rollback, pero **corre `n8n_wf.py` DENTRO del servidor por SSH** y lee ahí la API key: sin acceso
+SSH no hay por dónde entrar, y no es un parámetro que falte en la config. Hoy
+`ssh vps-boomerang` responde `Permission denied (publickey,password)` desde la máquina de Martín,
+así que para Formen la skill **no se puede usar**. Si algún día aparece esa clave privada, se
+puede volver a ella — apuntándola al servidor de Boomerang, no al del `n8n.json` global.
+
+*(`n8n-logs` sí sirve para diagnosticar ejecuciones: va por la API, no por SSH.)*
+
+Al pegar, ojo con las credenciales: los ids van hardcodeados en el JSON y vienen enganchadas
+solas, **salvo las que no existían cuando se escribió el script**. Hoy eso es
+`Silenciado en la lista?`, que trae el id placeholder `REEMPLAZAR-EN-N8N` y hay que elegirle a mano
+la credencial Header Auth **"Formen pausas"** (header `x-clave`, mismo valor que `PAUSA_CLAVE` en
+Vercel). Si queda mal, el nodo devuelve 401, `silenciado` llega `undefined` y **el bot contesta
+igual, sin ningún error visible**: la falla abierta es a propósito, pero esconde este caso.
 
 ---
 
