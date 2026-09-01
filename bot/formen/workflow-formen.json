@@ -137,7 +137,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const j = $json;\nconst raw = (j && j.data && typeof j.data === 'string') ? JSON.parse(j.data) : j;\nconst statusId = Number(raw.status_id) || 0;\nconst emb = raw._embedded || {};\nconst tags = (emb.tags || []).map(t => ({ id: t.id }));\nconst cfs = (raw && raw.custom_fields_values) || [];\nconst fb = cfs.find(c => Number(c.field_id) === 2084715);\nconst bufferRaw = (fb && fb.values && fb.values[0]) ? fb.values[0].value : '';\nlet buffer = { msgs: [], ts: 0 };\ntry { if (bufferRaw) buffer = JSON.parse(bufferRaw); } catch (e) {}\nif (!Array.isArray(buffer.msgs)) buffer.msgs = [];\n// El contacto se usa para buscar el telefono en la lista de silenciados.\nconst contactId = ((emb.contacts || [])[0] || {}).id || 0;\nreturn [{ json: { statusId: statusId, leadId: $('Edit Fields1').first().json.leadId, tags: tags, bufferMsgs: buffer.msgs, contactId: contactId } }];"
+        "jsCode": "const j = $json;\nconst raw = (j && j.data && typeof j.data === 'string') ? JSON.parse(j.data) : j;\nconst statusId = Number(raw.status_id) || 0;\nconst emb = raw._embedded || {};\n// El nombre hace falta para no volver a agregar una etiqueta que ya esta.\nconst tags = (emb.tags || []).map(t => ({ id: t.id, name: t.name }));\nconst cfs = (raw && raw.custom_fields_values) || [];\nconst fb = cfs.find(c => Number(c.field_id) === 2084715);\nconst bufferRaw = (fb && fb.values && fb.values[0]) ? fb.values[0].value : '';\nlet buffer = { msgs: [], ts: 0 };\ntry { if (bufferRaw) buffer = JSON.parse(bufferRaw); } catch (e) {}\nif (!Array.isArray(buffer.msgs)) buffer.msgs = [];\n// El contacto se usa para buscar el telefono en la lista de silenciados.\nconst contactId = ((emb.contacts || [])[0] || {}).id || 0;\nreturn [{ json: { statusId: statusId, leadId: $('Edit Fields1').first().json.leadId, tags: tags, bufferMsgs: buffer.msgs, contactId: contactId } }];"
       },
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -669,7 +669,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ status_id: 108221251, pipeline_id: 14000647 }) }}",
+        "jsonBody": "={{ JSON.stringify({ _embedded: { tags: (() => { const t = $('Estado lead').first().json.tags || []; return t.some(x => x.name === 'Atendido a mano') ? t : t.concat([{ name: 'Atendido a mano' }]); })() } }) }}",
         "options": {}
       },
       "type": "n8n-nodes-base.httpRequest",
@@ -679,7 +679,7 @@
         320
       ],
       "id": "aa000000-0000-4000-8000-00000000f005",
-      "name": "Marcar Lead pausado",
+      "name": "Marcar atendido a mano",
       "credentials": {
         "httpHeaderAuth": {
           "id": "XFOpX4xAM95NWBU6",
@@ -983,7 +983,7 @@
       "main": [
         [
           {
-            "node": "Marcar Lead pausado",
+            "node": "Marcar atendido a mano",
             "type": "main",
             "index": 0
           }
@@ -997,7 +997,7 @@
         ]
       ]
     },
-    "Marcar Lead pausado": {
+    "Marcar atendido a mano": {
       "main": [
         []
       ]

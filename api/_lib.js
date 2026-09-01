@@ -10,7 +10,9 @@ const URL_BASE = process.env.DATABASE_URL || process.env.POSTGRES_URL;
 export const sql = neon(URL_BASE);
 
 // Horas que un numero queda silenciado desde que se carga.
-export const HORAS_PAUSA = 24;
+// 12 y no 24: decidido con Martin el 2026-09-01. Es la ventana en la que se espera que
+// el cliente conteste el mensaje que le mando el vendedor a mano.
+export const HORAS_PAUSA = 12;
 
 let tablaLista = false;
 

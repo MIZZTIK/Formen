@@ -85,7 +85,7 @@
     <p class="ayuda">
       Si le vas a escribir vos a un cliente, cargá acá su número. Cuando esa persona
       escriba al WhatsApp de Formen, el bot no le va a contestar y la conversación
-      queda para vos. Se destraba solo a las 24 horas.
+      queda para vos. Se destraba solo a las 12 horas.
     </p>
 
     <div class="caja">
@@ -98,7 +98,7 @@
       <label for="numero">Número del cliente</label>
       <input id="numero" type="tel" inputmode="numeric" autocomplete="off" placeholder="3794123456" />
 
-      <button id="guardar">Silenciar al bot 24 horas</button>
+      <button id="guardar">Silenciar al bot 12 horas</button>
       <div id="aviso" class="aviso"></div>
     </div>
 
@@ -188,8 +188,8 @@
         else if (!r.ok) decir(datos.error || 'No se pudo guardar.', false);
         else {
           decir(datos.renovada
-            ? 'Ese número ya estaba silenciado. Le renové las 24 horas.'
-            : 'Listo. El bot no le va a contestar a ' + datos.pausa.numero + ' por 24 horas.', true);
+            ? 'Ese número ya estaba silenciado. Le renové las 12 horas.'
+            : 'Listo. El bot no le va a contestar a ' + datos.pausa.numero + ' por 12 horas.', true);
           $('numero').value = '';
           traerLista();
         }
