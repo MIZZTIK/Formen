@@ -231,6 +231,31 @@ Para correrlo a mano hace falta `-ExecutionPolicy Bypass`.
 
 ---
 
+## 🔴 Publicar el workflow por CLI: la trampa que tira el bot
+
+Con SSH al VPS se puede publicar sin la interfaz, y es lo que conviene:
+
+```bash
+docker cp wf.json n8n-06ir-n8n-1:/tmp/wf.json
+docker exec n8n-06ir-n8n-1 n8n import:workflow --input=/tmp/wf.json
+docker restart n8n-06ir-n8n-1        # n8n cachea los activos: sin reinicio no toma nada
+```
+
+Dos cosas que hay que saber o se rompe producción:
+
+1. **El JSON tiene que traer `id`.** Sin id, la importación crea un workflow NUEVO que
+   choca con el que corre por el mismo path de webhook (`formen`): el import dice que
+   salió bien y el bot se queda con la versión vieja. El id de producción del bot es
+   `D3y4QTdgfbgSdtCT`.
+2. **El JSON tiene que traer `active: true`.** Si no lo trae, `import:workflow`
+   **desactiva** el workflow — dice "Deactivating workflow ..." y sigue como si nada.
+   Pasó el 01/09/2026: el bot quedó caído dos minutos y medio hasta que el chequeo
+   posterior lo detectó. **Después de publicar, verificar SIEMPRE que el webhook
+   devuelva 200**, no alcanza con que el import diga "Successfully imported".
+
+En ese n8n viven solo los dos workflows de Formen, así que un reinicio no afecta a otros
+clientes — pero sí deja al bot mudo unos 25 segundos, y un mensaje que entre ahí se pierde.
+
 ## Estado y pendientes
 
 **El bot y el conector están funcionando en producción.**
