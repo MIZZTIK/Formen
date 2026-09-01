@@ -1,0 +1,96 @@
+{
+  "name": "Formen - Cargar silenciados desde el celular",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "formen-celular",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -600,
+        0
+      ],
+      "id": "bb000000-0000-4000-8000-00000000c001",
+      "name": "Webhook Evolution",
+      "webhookId": "formen-celular-evolution"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Evolution manda muchos eventos por el mismo webhook. Aca solo nos interesa uno:\n// un mensaje que SALE del celular del local hacia una persona. Todo lo demas se\n// descarta en silencio devolviendo [], que en n8n corta la ejecucion sin error.\nconst cuerpo = $json.body || $json;\n\n// 1. Solo mensajes nuevos.\nconst evento = String(cuerpo.event || cuerpo.type || '').toLowerCase();\nif (evento && evento.indexOf('messages.upsert') === -1) return [];\n\nconst data = cuerpo.data || cuerpo.message || {};\nconst key = data.key || {};\n\n// 2. Solo salientes. Un mensaje entrante no significa que el humano este atendiendo:\n//    puede ser cualquiera escribiendo al local.\nif (key.fromMe !== true) return [];\n\n// 3. Solo 1-a-1. Los grupos son @g.us y los estados @broadcast: afuera los dos.\nconst jid = String(key.remoteJid || '');\nif (jid.indexOf('@s.whatsapp.net') === -1) return [];\n\n// 4. El numero sale del JID. Ojo: para Argentina WhatsApp a veces entrega el JID con\n//    el 9 y a veces sin el. No lo arreglamos aca a proposito: /api/pausas normaliza a\n//    +549 al guardar, y la comparacion contra el bot es por los ultimos 10 digitos,\n//    asi que engancha igual venga como venga.\nconst dig = jid.split('@')[0].replace(/\\D/g, '');\nif (dig.length < 10) return [];\n\nreturn [{ json: { numero: '+' + dig, ultimos10: dig.slice(-10) } }];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -400,
+        0
+      ],
+      "id": "bb000000-0000-4000-8000-00000000c002",
+      "name": "Filtrar saliente"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://www.formen.ar/api/pausas",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ numero: $json.numero, cargadoPor: 'celular del local' }) }}",
+        "options": {
+          "timeout": 8000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -200,
+        0
+      ],
+      "id": "bb000000-0000-4000-8000-00000000c003",
+      "name": "Cargar en la lista",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REEMPLAZAR-EN-N8N",
+          "name": "Formen pausas"
+        }
+      },
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "Webhook Evolution": {
+      "main": [
+        [
+          {
+            "node": "Filtrar saliente",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar saliente": {
+      "main": [
+        [
+          {
+            "node": "Cargar en la lista",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cargar en la lista": {
+      "main": [
+        []
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}
